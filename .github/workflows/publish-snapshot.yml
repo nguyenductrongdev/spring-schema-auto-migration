@@ -1,0 +1,43 @@
+name: Publish SNAPSHOT
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Deploy to GitHub Packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java 21 and Maven credentials
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      - name: Enable Maven Wrapper
+        run: chmod +x mvnw
+
+      - name: Test and publish SNAPSHOT
+        run: ./mvnw -B --no-transfer-progress clean deploy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

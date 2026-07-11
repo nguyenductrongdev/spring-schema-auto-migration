@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Enable Maven Wrapper
+        run: chmod +x mvnw
+
+      - name: Verify
+        run: ./mvnw -B --no-transfer-progress clean verify
+
+  integration:
+    name: Cassandra integration test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Enable Maven Wrapper
+        run: chmod +x mvnw
+
+      - name: Verify against Cassandra
+        run: >-
+          ./mvnw -B --no-transfer-progress
+          -pl cassandra-auto-migration-spring-boot-starter
+          -am -Pintegration-tests verify
