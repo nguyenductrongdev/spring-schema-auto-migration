@@ -1,20 +1,42 @@
-# Cassandra Auto Migration
+# Spring Schema Auto Migration
 
-Safe additive Cassandra schema evolution for Spring Boot.
+Extensible, safe additive schema evolution for Spring Boot.
 
-Cassandra Auto Migration compares Spring Data Cassandra mappings with the live keyspace at application startup. It can create missing tables and UDTs, and add missing table columns and UDT fields. It never drops, renames, recreates, changes types or keys, or moves data.
+Spring Schema Auto Migration provides database-specific migration providers behind one database-neutral library name. Cassandra and Elasticsearch providers compare Spring Data mappings with the live schema during application startup and apply only explicitly supported additive changes.
 
 > Create new objects and add new fields only. Never update or delete existing schema objects.
 
-The project targets Java 21, Spring Boot 3.x, Spring Data Cassandra, Cassandra Java Driver 4.x, and Cassandra Server 4.1+.
+The project requires Java 21. The Cassandra provider targets Spring Data Cassandra, Cassandra Java Driver 4.x, and Cassandra Server 4.1+. The Elasticsearch provider supports both Elasticsearch 8 and Elasticsearch 9 through their matching Spring Boot and Spring Data release lines.
 
 ## Status
 
-The current development version is `0.1.0-SNAPSHOT`. It is published to GitHub Packages by pushes to `main` and `develop`.
+The current development version is `0.1.0-SNAPSHOT`. It is published to GitHub Packages by pushes to `master`, `main`, and `develop`.
 
 The API is pre-release and may change before `1.0.0`.
 
-## Supported operations
+## Compatibility
+
+| Spring Boot | Spring Data Elasticsearch | Elasticsearch Java Client | Elasticsearch Server | Verification |
+| --- | --- | --- | --- | --- |
+| `3.5.x` | `5.5.x` | `8.18.x` | `8.18.x` | Provider integration suite |
+| `4.1.x` | `6.1.x` | `9.4.x` | `9.4.x` | Dedicated Boot 4 compatibility suite |
+
+Elasticsearch 9 support is the Boot 4 / Spring Data Elasticsearch 6 path. Do not force an Elasticsearch 9 client into a Boot 3 application; use the versions managed by the application's Spring Boot release instead. Both supported lines use the same `schema-auto-migration-spring-boot-starter` artifact and provider API.
+
+## Provider model
+
+The Maven artifact and top-level namespace are database-neutral. Provider implementations remain explicit:
+
+- Cassandra provider: `io.github.nguyenductrongdev.automigration.cassandra`
+- Elasticsearch provider: `io.github.nguyenductrongdev.automigration.elasticsearch`
+- Future providers can live under sibling namespaces such as `.jdbc`
+- Provider-specific entry points and settings keep their database name, such as `@EnableCassandraAutoMigration` and `cassandra.auto-migration.*`
+
+This keeps consumers from confusing Cassandra behavior with future providers while allowing shared migration abstractions to move into `io.github.nguyenductrongdev.automigration` later.
+
+The Spring Boot auto-configuration and Spring Data Cassandra and Elasticsearch dependencies are optional. Applications add the normal Spring Boot data starter for the database they actually use, so enabling one provider does not auto-configure another database or pin the consumer to the starter's build-time Boot version.
+
+## Cassandra supported operations
 
 | Difference | Automatic action |
 | --- | --- |
@@ -24,6 +46,17 @@ The API is pre-release and may change before `1.0.0`.
 | Missing non-key table column | `ALTER TABLE ... ADD IF NOT EXISTS` |
 
 All generated operations are additive. A second run against the migrated schema produces no statements.
+
+## Elasticsearch supported operations
+
+| Difference | Automatic action |
+| --- | --- |
+| Missing index | `PUT /{index}` with desired settings and mappings |
+| Missing field in a managed index | `PUT /{index}/_mapping` |
+
+Elasticsearch index names and mappings come from Spring Data `@Document` entities registered in the mapping context. Use `createIndex = false` so Spring Data repository initialization does not create the index before this library runs.
+
+For Elasticsearch, `SAFE_UPDATE` rejects changed field types or mapping parameters, existing fields absent from the desired mapping, and configured index settings that differ from the live index. It never deletes an index, removes a field, changes a field mapping, reindexes documents, or performs a backfill.
 
 ## Never automated
 
@@ -48,7 +81,7 @@ Add the GitHub Packages repository and dependency:
 <repositories>
     <repository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/nguyenductrongdev/spring-cassandra-auto-migration</url>
+        <url>https://maven.pkg.github.com/nguyenductrongdev/spring-schema-auto-migration</url>
         <releases>
             <enabled>true</enabled>
         </releases>
@@ -60,9 +93,14 @@ Add the GitHub Packages repository and dependency:
 </repositories>
 
 <dependencies>
+    <!-- Add the normal Spring Data starter for each database your application uses. -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+    </dependency>
     <dependency>
         <groupId>io.github.nguyenductrongdev</groupId>
-        <artifactId>cassandra-auto-migration-spring-boot-starter</artifactId>
+        <artifactId>schema-auto-migration-spring-boot-starter</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </dependency>
 </dependencies>
@@ -94,12 +132,12 @@ mvn -U clean verify
 
 The `-U` flag forces Maven to check remote repositories for updated releases and SNAPSHOTs instead of waiting for the normal update interval.
 
-## Enable migration
+## Enable Cassandra migration
 
 Add the annotation to the Spring Boot application:
 
 ```java
-import io.github.nguyenductrongdev.cassandra.migration.EnableCassandraAutoMigration;
+import io.github.nguyenductrongdev.automigration.cassandra.EnableCassandraAutoMigration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
@@ -121,29 +159,60 @@ spring:
 
 cassandra:
   auto-migration:
-    mode: UPDATE
-    fail-on-unsupported: true
-    report-unmanaged-objects: true
+    mode: DRY_RUN
 ```
 
-The keyspace must already exist. Keyspace creation and replication changes are deliberately outside this library's scope.
+The keyspace must already exist. Keyspace creation and replication changes are deliberately outside this library's scope. In `SAFE_UPDATE`, a missing keyspace fails application startup before entity scanning, comparison, or CQL execution.
 
 ## Execution modes
 
 | Mode | Behavior |
 | --- | --- |
-| `NONE` | Skips scanning and comparison |
-| `VALIDATE` | Compares and reports counts/differences; writes nothing |
-| `SCRIPT` | Logs executable additive CQL; writes nothing |
-| `UPDATE` | Executes only the generated additive CQL |
+| `NONE` | Default. Skips schema scanning and comparison |
+| `DRY_RUN` | Compares schemas and logs the ordered migration plan without executing it |
+| `SAFE_UPDATE` | Rejects unsupported differences, then executes only provider-supported additive operations |
 
-`UPDATE` is the default. For a first rollout, start with `SCRIPT`, inspect the generated CQL, and then enable `UPDATE`.
+`DRY_RUN` logs the complete ordered plan through the provider's dedicated plan logger. It never creates a report file or executes a migration.
 
-When `fail-on-unsupported=true`, any unsupported difference fails startup before the first additive statement is executed. When false, unsupported differences are logged and safe additive statements may still run.
+Applications can route this logger to a separate file or centralized logging system through their normal Logback or Log4j configuration.
 
-Set `report-unmanaged-objects=false` when the keyspace intentionally contains tables or UDTs owned by another application.
+`NONE` is the default. For a first rollout, enable `DRY_RUN`, inspect the logged plan, and then enable `SAFE_UPDATE`.
+
+Any unsupported difference always fails startup before the first additive statement is executed. In `DRY_RUN`, the complete plan is logged before startup fails.
+
+For Cassandra, existing tables and UDTs without a mapped application type are always reported as unsupported differences. Use a dedicated keyspace when other applications own schema objects that are not part of this application's mappings.
 
 If `cassandra.auto-migration.keyspace-name` is omitted, the starter uses the keyspace from the active `CqlSession`.
+
+## Enable Elasticsearch migration
+
+Add the provider annotation:
+
+```java
+import io.github.nguyenductrongdev.automigration.elasticsearch.EnableElasticsearchAutoMigration;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+@EnableElasticsearchAutoMigration
+public class Application {
+}
+```
+
+Configure the normal Spring Boot Elasticsearch URI and provider mode:
+
+```yaml
+spring:
+  elasticsearch:
+    uris: http://localhost:9200
+
+elasticsearch:
+  auto-migration:
+    mode: DRY_RUN
+```
+
+Elasticsearch `DRY_RUN` logs each ordered REST method, path, JSON body, and unsupported difference through `io.github.nguyenductrongdev.automigration.plan.elasticsearch`. `SAFE_UPDATE` creates missing indices and adds missing mappings only.
+
+Indices with no mapped `@Document` type are outside the provider's ownership boundary and are not inspected. Extra fields inside a managed index are always reported as unsupported.
 
 ## Mapping support
 
@@ -163,25 +232,31 @@ Common scalar types, enums, arrays, `Optional`, `List`, `Set`, `Map`, and mapped
 
 Applications with custom Cassandra converters can provide their own `JavaTypeResolver` bean. The starter's beans use `@ConditionalOnMissingBean` so focused overrides remain possible.
 
+The Elasticsearch scanner reads `@Document`, `@Field`, `@Id`, nested objects, multi-fields, analyzers, and other mapping metadata through Spring Data Elasticsearch's own mapping builder. Unsupported mapping differences fail explicitly rather than being overwritten.
+
 ## How startup works
 
-1. Spring Boot creates `CqlSession` and `CassandraMappingContext`.
-2. The starter scans mapped tables, primary keys, columns, UDTs, and fields.
-3. Driver metadata is read from the configured keyspace.
-4. The comparator creates an in-memory migration plan.
-5. Unsupported differences are logged and optionally fail startup.
-6. Depending on the mode, additive CQL is logged or executed in dependency order.
+1. Spring finishes creating all non-lazy singleton beans, including standard Spring Boot data initialization.
+2. Enabled providers scan their Spring Data mapping contexts, inspect their databases, and build plans in parallel using Java 21 virtual threads.
+3. The coordinator waits for every provider and validates all completed plans in deterministic provider order.
+4. If any planning or validation fails, no provider starts execution.
+5. Valid `SAFE_UPDATE` providers execute in parallel. Operations inside each provider remain sequential to preserve dependencies.
+6. The coordinator waits for every execution before Spring starts lifecycle components such as servlet and reactive web servers.
 
-Missing UDTs are created before tables that can reference them. Existing UDT fields are added before table columns and new tables are processed. Cassandra schema statements are executed sequentially.
+A migration failure aborts application-context refresh before the web server starts accepting requests.
 
-## Sample application
+Missing UDTs are created before tables that can reference them. Existing UDT fields are added before table columns and new tables are processed. Elasticsearch index creation precedes mapping updates inside its provider.
 
-The [sample-app](sample-app) module contains a `Customer` table, an `Address` UDT, a repository, and Docker Compose setup.
+Execution cannot be atomic across different databases. A runtime failure in one provider cannot roll back changes already acknowledged by another provider, but global validation prevents known unsupported plans from causing this kind of partial execution.
+
+## Sample applications
+
+The [cassandra-sample-app](cassandra-sample-app) module contains a `Customer` table, an `Address` UDT, a repository, and Docker Compose setup.
 
 On macOS/Linux:
 
 ```bash
-cd sample-app
+cd cassandra-sample-app
 docker compose up -d
 ../mvnw spring-boot:run
 ```
@@ -189,17 +264,27 @@ docker compose up -d
 On Windows PowerShell:
 
 ```powershell
-cd sample-app
+cd cassandra-sample-app
 docker compose up -d
 ..\mvnw.cmd spring-boot:run
 ```
 
-The sample defaults to `SCRIPT`. To apply the displayed schema:
+The sample defaults to `DRY_RUN`. To apply the logged schema:
 
 ```powershell
-$env:CASSANDRA_MIGRATION_MODE = "UPDATE"
+$env:CASSANDRA_MIGRATION_MODE = "SAFE_UPDATE"
 ..\mvnw.cmd spring-boot:run
 ```
+
+The [elasticsearch-sample-app](elasticsearch-sample-app) module contains a `CustomerDocument`, repository, and Spring Boot 3 / Elasticsearch 8 Docker Compose setup:
+
+```powershell
+cd elasticsearch-sample-app
+docker compose up -d
+..\mvnw.cmd spring-boot:run
+```
+
+It also defaults to `DRY_RUN`. Set `ELASTICSEARCH_MIGRATION_MODE=SAFE_UPDATE` to create the missing index or add missing fields.
 
 ## Build and test
 
@@ -215,11 +300,11 @@ Run the Testcontainers integration test when Docker is available:
 ./mvnw -Pintegration-tests verify
 ```
 
-The integration test starts Cassandra 4.1, creates an empty keyspace, applies create and alter plans, and verifies that repeated comparisons are empty.
+The integration profile runs Testcontainers suites for Cassandra 4.1, Elasticsearch 8.18 on Spring Boot 3.5, and Elasticsearch 9.4 on Spring Boot 4.1. It applies create and additive update plans and verifies that repeated comparisons are empty. The ES9 suite lives in [elasticsearch9-compatibility-tests](elasticsearch9-compatibility-tests) and is never published as a library artifact.
 
 ## SNAPSHOT publishing
 
-`.github/workflows/publish-snapshot.yml` publishes `0.1.0-SNAPSHOT` to GitHub Packages after every push to `main` or `develop`. Maven stores each deployment as a timestamped SNAPSHOT while consumers keep the stable dependency string `0.1.0-SNAPSHOT`.
+`.github/workflows/publish-snapshot.yml` publishes `0.1.0-SNAPSHOT` to GitHub Packages after every push to `master`, `main`, or `develop`. Maven stores each deployment as a timestamped SNAPSHOT while consumers keep the stable dependency string `0.1.0-SNAPSHOT`.
 
 The workflow uses the repository's `GITHUB_TOKEN` with `packages: write`; no personal token is required for CI publishing. See [docs/publishing.md](docs/publishing.md) for local publishing and consumer details.
 

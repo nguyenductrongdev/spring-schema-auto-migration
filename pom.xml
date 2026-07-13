@@ -12,13 +12,13 @@
     </parent>
 
     <groupId>io.github.nguyenductrongdev</groupId>
-    <artifactId>spring-cassandra-auto-migration-parent</artifactId>
+    <artifactId>schema-auto-migration-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>Spring Cassandra Auto Migration</name>
-    <description>Safe additive Cassandra schema migrations for Spring Boot</description>
-    <url>https://github.com/nguyenductrongdev/spring-cassandra-auto-migration</url>
+    <name>Spring Schema Auto Migration</name>
+    <description>Extensible, safe additive schema migrations for Spring Boot</description>
+    <url>https://github.com/nguyenductrongdev/spring-schema-auto-migration</url>
 
     <licenses>
         <license>
@@ -36,14 +36,16 @@
     </developers>
 
     <scm>
-        <connection>scm:git:https://github.com/nguyenductrongdev/spring-cassandra-auto-migration.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/nguyenductrongdev/spring-cassandra-auto-migration.git</developerConnection>
-        <url>https://github.com/nguyenductrongdev/spring-cassandra-auto-migration</url>
+        <connection>scm:git:https://github.com/nguyenductrongdev/spring-schema-auto-migration.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/nguyenductrongdev/spring-schema-auto-migration.git</developerConnection>
+        <url>https://github.com/nguyenductrongdev/spring-schema-auto-migration</url>
     </scm>
 
     <modules>
-        <module>cassandra-auto-migration-spring-boot-starter</module>
-        <module>sample-app</module>
+        <module>schema-auto-migration-spring-boot-starter</module>
+        <module>cassandra-sample-app</module>
+        <module>elasticsearch-sample-app</module>
+        <module>elasticsearch9-compatibility-tests</module>
     </modules>
 
     <properties>
@@ -51,7 +53,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <github.repository>nguyenductrongdev/spring-cassandra-auto-migration</github.repository>
+        <github.repository>nguyenductrongdev/spring-schema-auto-migration</github.repository>
     </properties>
 
 
@@ -90,4 +92,3 @@
         </pluginManagement>
     </build>
 </project>
-

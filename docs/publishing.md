@@ -3,14 +3,14 @@
 ## Coordinates
 
 ```text
-io.github.nguyenductrongdev:cassandra-auto-migration-spring-boot-starter:0.1.0-SNAPSHOT
+io.github.nguyenductrongdev:schema-auto-migration-spring-boot-starter:0.1.0-SNAPSHOT
 ```
 
-The parent POM and starter are deployable. The `sample-app` module sets `maven.deploy.skip=true`.
+The parent POM and starter are deployable. The `cassandra-sample-app`, `elasticsearch-sample-app`, and compatibility-test modules set `maven.deploy.skip=true`.
 
 ## Automated SNAPSHOT publishing
 
-The `Publish SNAPSHOT` workflow runs on pushes to `main` and `develop`.
+The `Publish SNAPSHOT` workflow runs on pushes to `master`, `main`, and `develop`.
 
 It:
 

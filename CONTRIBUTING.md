@@ -1,12 +1,12 @@
 # Contributing
 
-Thanks for helping improve Cassandra Auto Migration.
+Thanks for helping improve Spring Schema Auto Migration.
 
 ## Safety boundary
 
 Every automatic migration must remain additive and idempotent. Pull requests must not add automatic drop, rename, type change, primary-key change, recreation, data migration, or backfill behavior.
 
-Unsupported differences should be represented as reports, never executable CQL.
+Unsupported differences should be represented as reports, never executable database operations.
 
 ## Development
 
@@ -21,10 +21,10 @@ Run unit tests and packaging:
 ./mvnw clean verify
 ```
 
-Run the Cassandra Testcontainers suite:
+Run the Cassandra and Elasticsearch Testcontainers suites:
 
 ```bash
 ./mvnw -Pintegration-tests verify
 ```
 
-Please add focused tests for scanner, comparator, CQL ordering, and execution behavior when changing the migration core.
+Please add focused tests for scanner, comparator, operation ordering, and execution behavior when changing the migration core.

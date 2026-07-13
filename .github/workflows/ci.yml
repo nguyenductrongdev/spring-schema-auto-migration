@@ -30,7 +30,7 @@ jobs:
         run: ./mvnw -B --no-transfer-progress clean verify
 
   integration:
-    name: Cassandra integration test
+    name: Provider integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -47,8 +47,8 @@ jobs:
       - name: Enable Maven Wrapper
         run: chmod +x mvnw
 
-      - name: Verify against Cassandra
+      - name: Verify against Cassandra, Elasticsearch 8, and Elasticsearch 9
         run: >-
           ./mvnw -B --no-transfer-progress
-          -pl cassandra-auto-migration-spring-boot-starter
+          -pl schema-auto-migration-spring-boot-starter,elasticsearch9-compatibility-tests
           -am -Pintegration-tests verify

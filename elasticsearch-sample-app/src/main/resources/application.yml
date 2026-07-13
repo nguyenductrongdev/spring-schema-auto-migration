@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: schema-auto-migration-elasticsearch-sample
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+
+elasticsearch:
+  auto-migration:
+    mode: ${ELASTICSEARCH_MIGRATION_MODE:DRY_RUN}
