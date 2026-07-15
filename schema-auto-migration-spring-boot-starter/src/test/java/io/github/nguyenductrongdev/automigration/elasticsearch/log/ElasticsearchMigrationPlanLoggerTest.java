@@ -36,10 +36,10 @@ class ElasticsearchMigrationPlanLoggerTest {
 
         assertThat(output.getAll())
                 .contains("[ELASTICSEARCH][DRY_RUN] Planned operations: 1; unsupported differences: 1")
-                .contains("[ELASTICSEARCH][DRY_RUN][API][1/1] PUT /customers")
-                .contains("[ELASTICSEARCH][DRY_RUN][BODY][1/1]")
+                .contains("[ELASTICSEARCH][DRY_RUN][API][1/1] PUT /customers body={")
                 .contains("\"mappings\"")
                 .contains("\"properties\"")
+                .doesNotContain("[ELASTICSEARCH][DRY_RUN][BODY]")
                 .contains("[ELASTICSEARCH][DRY_RUN][UNSUPPORTED][1/1] [UNMANAGED_FIELD] "
                         + "customers.legacy: Field is not managed")
                 .contains("[ELASTICSEARCH][DRY_RUN] No migration was executed");

@@ -7,15 +7,10 @@ import com.datastax.oss.driver.api.core.metadata.schema.KeyspaceMetadata;
 import com.datastax.oss.driver.api.core.metadata.schema.TableMetadata;
 import com.datastax.oss.driver.api.core.type.UserDefinedType;
 import com.datastax.oss.driver.api.core.type.DataType;
-import com.datastax.oss.driver.api.core.type.ListType;
-import com.datastax.oss.driver.api.core.type.MapType;
-import com.datastax.oss.driver.api.core.type.SetType;
-import com.datastax.oss.driver.api.core.type.TupleType;
-import com.datastax.oss.driver.api.core.type.VectorType;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.CassandraSchema;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.ClusteringOrder;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.ColumnDefinition;
-import io.github.nguyenductrongdev.automigration.cassandra.schema.CqlNames;
+import io.github.nguyenductrongdev.automigration.cassandra.schema.CqlDataTypeRenderer;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.TableDefinition;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.UdtDefinition;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.UdtFieldDefinition;
@@ -24,7 +19,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /** Reads a keyspace schema from Cassandra driver metadata. */
 public class CassandraSchemaInspector {
@@ -96,35 +90,7 @@ public class CassandraSchemaInspector {
     }
 
     String cqlType(DataType type) {
-        if (type instanceof UserDefinedType udt) {
-            String name = CqlNames.quote(udt.getName().asInternal());
-            return frozen(udt.isFrozen(), name);
-        }
-        if (type instanceof ListType listType) {
-            return frozen(listType.isFrozen(), "list<" + cqlType(listType.getElementType()) + ">");
-        }
-        if (type instanceof SetType setType) {
-            return frozen(setType.isFrozen(), "set<" + cqlType(setType.getElementType()) + ">");
-        }
-        if (type instanceof MapType mapType) {
-            String map = "map<" + cqlType(mapType.getKeyType())
-                    + ", " + cqlType(mapType.getValueType()) + ">";
-            return frozen(mapType.isFrozen(), map);
-        }
-        if (type instanceof TupleType tupleType) {
-            return "tuple<" + tupleType.getComponentTypes().stream()
-                    .map(this::cqlType)
-                    .collect(Collectors.joining(", ")) + ">";
-        }
-        if (type instanceof VectorType vectorType) {
-            return "vector<" + cqlType(vectorType.getElementType())
-                    + ", " + vectorType.getDimensions() + ">";
-        }
-        return type.asCql(true, false);
-    }
-
-    private String frozen(boolean frozen, String type) {
-        return frozen ? "frozen<" + type + ">" : type;
+        return CqlDataTypeRenderer.render(type);
     }
 
 }

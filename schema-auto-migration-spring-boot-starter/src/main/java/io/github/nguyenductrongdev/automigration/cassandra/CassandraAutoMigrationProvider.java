@@ -15,7 +15,6 @@ import io.github.nguyenductrongdev.automigration.core.PreparedSchemaMigration;
 import io.github.nguyenductrongdev.automigration.core.SchemaAutoMigrationProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.cassandra.core.mapping.CassandraMappingContext;
 import org.springframework.util.StringUtils;
 
 /** Cassandra implementation of the shared schema migration provider contract. */
@@ -25,7 +24,6 @@ public class CassandraAutoMigrationProvider implements SchemaAutoMigrationProvid
 
     private final CassandraAutoMigrationProperties properties;
     private final CqlSession session;
-    private final CassandraMappingContext mappingContext;
     private final SpringDataCassandraSchemaScanner scanner;
     private final CassandraSchemaInspector inspector;
     private final CassandraSchemaComparator comparator;
@@ -35,7 +33,6 @@ public class CassandraAutoMigrationProvider implements SchemaAutoMigrationProvid
     public CassandraAutoMigrationProvider(
             CassandraAutoMigrationProperties properties,
             CqlSession session,
-            CassandraMappingContext mappingContext,
             SpringDataCassandraSchemaScanner scanner,
             CassandraSchemaInspector inspector,
             CassandraSchemaComparator comparator,
@@ -43,7 +40,6 @@ public class CassandraAutoMigrationProvider implements SchemaAutoMigrationProvid
             CassandraMigrationPlanLogger planLogger) {
         this.properties = properties;
         this.session = session;
-        this.mappingContext = mappingContext;
         this.scanner = scanner;
         this.inspector = inspector;
         this.comparator = comparator;
@@ -72,7 +68,7 @@ public class CassandraAutoMigrationProvider implements SchemaAutoMigrationProvid
         String keyspace = resolveKeyspace();
         session.refreshSchema();
         CassandraSchema existing = inspector.inspect(session, keyspace);
-        CassandraSchema desired = scanner.scan(mappingContext);
+        CassandraSchema desired = scanner.scan();
         MigrationPlan plan = comparator.compare(keyspace, desired, existing);
         return new PreparedCassandraMigration(mode, keyspace, plan);
     }

@@ -52,6 +52,54 @@ class ElasticsearchSchemaScannerTest {
                 .containsExactly("audit-events", "customers");
         assertThat(definitions.get(1).mapping())
                 .containsKey("properties");
+        assertThat(properties(definitions.get(0)))
+                .containsEntry("id", Map.of("type", "keyword"));
+        assertThat(properties(definitions.get(1)))
+                .containsEntry("id", Map.of("type", "keyword"));
+    }
+
+    @Test
+    void preservesAnExplicitIdMapping() {
+        ElasticsearchIndexDefinition definition = scanSingle(
+                ExplicitIdDocument.class,
+                "explicit-id",
+                Map.of("properties", Map.of("id", Map.of("type", "text"))));
+
+        assertThat(properties(definition))
+                .containsEntry("id", Map.of("type", "text"));
+    }
+
+    @Test
+    void omitsIdMappingWhenIdIsNotStoredInSource() {
+        ElasticsearchIndexDefinition definition = scanSingle(
+                ExternalIdDocument.class,
+                "external-id",
+                Map.of("properties", Map.of("name", Map.of("type", "text"))));
+
+        assertThat(properties(definition))
+                .doesNotContainKey("id");
+    }
+
+    private ElasticsearchIndexDefinition scanSingle(
+            Class<?> entityType, String indexName, Map<String, Object> mapping) {
+        SimpleElasticsearchMappingContext mappingContext = new SimpleElasticsearchMappingContext();
+        mappingContext.setInitialEntitySet(Set.of(entityType));
+        mappingContext.afterPropertiesSet();
+        MappingElasticsearchConverter converter = new MappingElasticsearchConverter(mappingContext);
+        converter.afterPropertiesSet();
+
+        ElasticsearchOperations operations = mock(ElasticsearchOperations.class);
+        IndexOperations indexOperations = indexOperations(mapping);
+        when(operations.getElasticsearchConverter()).thenReturn(converter);
+        when(operations.getIndexCoordinatesFor(entityType)).thenReturn(IndexCoordinates.of(indexName));
+        when(operations.indexOps(entityType)).thenReturn(indexOperations);
+
+        return new ElasticsearchSchemaScanner().scan(operations).getFirst();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> properties(ElasticsearchIndexDefinition definition) {
+        return (Map<String, Object>) definition.mapping().get("properties");
     }
 
     private IndexOperations indexOperations(Map<String, Object> mapping) {
@@ -77,5 +125,20 @@ class ElasticsearchSchemaScannerTest {
         private String id;
         @Field(type = FieldType.Text)
         private String message;
+    }
+
+    @Document(indexName = "explicit-id", createIndex = false)
+    private static final class ExplicitIdDocument {
+        @Id
+        @Field(type = FieldType.Text)
+        private String id;
+    }
+
+    @Document(indexName = "external-id", createIndex = false, storeIdInSource = false)
+    private static final class ExternalIdDocument {
+        @Id
+        private String id;
+        @Field(type = FieldType.Text)
+        private String name;
     }
 }

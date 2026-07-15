@@ -1,53 +1,62 @@
 package io.github.nguyenductrongdev.automigration.cassandra.scan;
 
+import com.datastax.oss.driver.api.core.CqlIdentifier;
+import com.datastax.oss.driver.api.core.type.DataType;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.CassandraSchema;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.ClusteringOrder;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.ColumnDefinition;
+import io.github.nguyenductrongdev.automigration.cassandra.schema.CqlDataTypeRenderer;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.CqlNames;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.TableDefinition;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.UdtDefinition;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.UdtFieldDefinition;
+import org.springframework.data.cassandra.core.convert.CassandraConverter;
+import org.springframework.data.cassandra.core.convert.SchemaFactory;
 import org.springframework.data.cassandra.core.cql.Ordering;
+import org.springframework.data.cassandra.core.cql.keyspace.ColumnSpecification;
+import org.springframework.data.cassandra.core.cql.keyspace.CreateTableSpecification;
+import org.springframework.data.cassandra.core.cql.keyspace.CreateUserTypeSpecification;
+import org.springframework.data.cassandra.core.cql.keyspace.FieldSpecification;
 import org.springframework.data.cassandra.core.mapping.CassandraMappingContext;
-import org.springframework.data.cassandra.core.mapping.CassandraType;
 import org.springframework.data.cassandra.core.mapping.CassandraPersistentEntity;
-import org.springframework.data.cassandra.core.mapping.CassandraPersistentProperty;
-import org.springframework.data.cassandra.core.mapping.Frozen;
 import org.springframework.data.cassandra.core.mapping.Table;
-import org.springframework.data.cassandra.core.mapping.VectorType;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Type;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-/** Builds the desired schema from Spring Data Cassandra mapping metadata. */
+/** Builds the desired schema using Spring Data Cassandra's public schema mapping API. */
 public class SpringDataCassandraSchemaScanner {
 
-    private final JavaTypeResolver typeResolver;
+    private final CassandraMappingContext mappingContext;
+    private final SchemaFactory schemaFactory;
 
-    public SpringDataCassandraSchemaScanner(JavaTypeResolver typeResolver) {
-        this.typeResolver = typeResolver;
+    public SpringDataCassandraSchemaScanner(CassandraConverter converter) {
+        this.mappingContext = converter.getMappingContext();
+        this.schemaFactory = new SchemaFactory(converter);
     }
 
-    public CassandraSchema scan(CassandraMappingContext mappingContext) {
+    public CassandraSchema scan() {
         Map<String, TableDefinition> tables = new LinkedHashMap<>();
         Map<String, UdtDefinition> udts = new LinkedHashMap<>();
+        Set<String> mappedUdtNames = mappingContext.getPersistentEntities().stream()
+                .filter(CassandraPersistentEntity::isUserDefinedType)
+                .map(entity -> entity.getTableName().asInternal())
+                .collect(Collectors.toSet());
 
         mappingContext.getPersistentEntities().stream()
                 .sorted(Comparator.comparing(entity -> entity.getType().getName()))
                 .forEach(entity -> {
                     if (entity.isUserDefinedType()) {
-                        UdtDefinition udt = scanUdt(entity, mappingContext);
+                        UdtDefinition udt = scanUdt(entity, mappedUdtNames);
                         udts.put(udt.name(), udt);
                     }
                     if (entity.getType().isAnnotationPresent(Table.class)) {
-                        TableDefinition table = scanTable(entity, mappingContext);
+                        TableDefinition table = scanTable(entity);
                         tables.put(table.name(), table);
                     }
                 });
@@ -55,214 +64,140 @@ public class SpringDataCassandraSchemaScanner {
         return new CassandraSchema(tables, udts);
     }
 
-    private TableDefinition scanTable(
-            CassandraPersistentEntity<?> entity,
-            CassandraMappingContext mappingContext) {
+    private TableDefinition scanTable(CassandraPersistentEntity<?> entity) {
+        CreateTableSpecification specification = schemaFactory.getCreateTableSpecificationFor(entity);
         Map<String, ColumnDefinition> columns = new LinkedHashMap<>();
-        List<KeyPart> partitionKeys = new ArrayList<>();
-        List<KeyPart> clusteringKeys = new ArrayList<>();
 
-        for (CassandraPersistentProperty property : entity) {
-            if (property.isTransient()) {
-                continue;
-            }
-            if (property.isCompositePrimaryKey()) {
-                CassandraPersistentEntity<?> primaryKeyEntity =
-                        mappingContext.getRequiredPersistentEntity(property.getType());
-                scanPrimaryKeyEntity(primaryKeyEntity, mappingContext, columns, partitionKeys, clusteringKeys);
-            } else {
-                scanProperty(property, mappingContext, columns, partitionKeys, clusteringKeys);
-            }
+        for (ColumnSpecification column : specification.getColumns()) {
+            String name = column.getName().asInternal();
+            DataType type = Objects.requireNonNull(
+                    column.getType(), "Cassandra type for column " + name);
+            columns.put(name, new ColumnDefinition(
+                    name,
+                    CqlDataTypeRenderer.render(type),
+                    column.getKeyType() != null,
+                    column.isStatic()));
         }
 
-        if (partitionKeys.isEmpty()) {
-            throw new IllegalStateException("Mapped table " + entity.getType().getName() + " has no partition key");
+        List<String> partitionKeys = columnNames(specification.getPartitionKeyColumns());
+        List<String> clusteringKeys = columnNames(specification.getClusteredKeyColumns());
+        Map<String, ClusteringOrder> clusteringOrders = new LinkedHashMap<>();
+        for (ColumnSpecification column : specification.getClusteredKeyColumns()) {
+            clusteringOrders.put(
+                    column.getName().asInternal(),
+                    column.getOrdering() == Ordering.DESCENDING
+                            ? ClusteringOrder.DESC
+                            : ClusteringOrder.ASC);
         }
+
         return new TableDefinition(
                 entity.getTableName().asInternal(),
                 columns,
-                keyNames(partitionKeys),
-                keyNames(clusteringKeys),
-                clusteringOrders(clusteringKeys));
+                partitionKeys,
+                clusteringKeys,
+                clusteringOrders);
     }
 
-    private void scanPrimaryKeyEntity(
-            CassandraPersistentEntity<?> keyEntity,
-            CassandraMappingContext mappingContext,
-            Map<String, ColumnDefinition> columns,
-            List<KeyPart> partitionKeys,
-            List<KeyPart> clusteringKeys) {
-        for (CassandraPersistentProperty property : keyEntity) {
-            if (!property.isPrimaryKeyColumn()) {
-                throw new IllegalStateException("Every property in primary key class "
-                        + keyEntity.getType().getName() + " must use @PrimaryKeyColumn");
-            }
-            scanProperty(property, mappingContext, columns, partitionKeys, clusteringKeys);
-        }
-    }
-
-    private void scanProperty(
-            CassandraPersistentProperty property,
-            CassandraMappingContext mappingContext,
-            Map<String, ColumnDefinition> columns,
-            List<KeyPart> partitionKeys,
-            List<KeyPart> clusteringKeys) {
-        String columnName = property.getColumnName().asInternal();
-        boolean primaryKey = property.isIdProperty() || property.isPrimaryKeyColumn();
-        columns.put(columnName, new ColumnDefinition(
-                columnName,
-                cqlType(property, mappingContext),
-                primaryKey,
-                property.isStaticColumn()));
-
-        int ordinal = property.hasOrdinal() ? property.getRequiredOrdinal() : 0;
-        if (property.isPartitionKeyColumn()
-                || (property.isIdProperty() && !property.isClusterKeyColumn())) {
-            partitionKeys.add(new KeyPart(ordinal, columnName, ClusteringOrder.ASC));
-        } else if (property.isClusterKeyColumn()) {
-            clusteringKeys.add(new KeyPart(
-                    ordinal,
-                    columnName,
-                    clusteringOrder(property.getPrimaryKeyOrdering())));
-        }
-    }
-
-    private UdtDefinition scanUdt(
-            CassandraPersistentEntity<?> entity, CassandraMappingContext mappingContext) {
+    private UdtDefinition scanUdt(CassandraPersistentEntity<?> entity, Set<String> mappedUdtNames) {
+        CreateUserTypeSpecification specification = schemaFactory.getCreateUserTypeSpecificationFor(entity);
         Map<String, UdtFieldDefinition> fields = new LinkedHashMap<>();
-        for (CassandraPersistentProperty property : entity) {
-            if (!property.isTransient()) {
-                String fieldName = property.getColumnName().asInternal();
-                fields.put(fieldName, new UdtFieldDefinition(fieldName, cqlType(property, mappingContext)));
-            }
+        for (FieldSpecification field : specification.getFields()) {
+            RenderedField rendered = parseRenderedField(field.toCql());
+            fields.put(rendered.name(), new UdtFieldDefinition(
+                    rendered.name(), quoteMappedUdtNames(rendered.cqlType(), mappedUdtNames)));
         }
         return new UdtDefinition(entity.getTableName().asInternal(), fields);
     }
 
-    private String cqlType(
-            CassandraPersistentProperty property,
-            CassandraMappingContext mappingContext) {
-        String resolved;
-        VectorType vector = property.findAnnotation(VectorType.class);
-        if (vector != null) {
-            resolved = "vector<" + scalarAnnotationType(vector.subtype())
-                    + ", " + vector.dimensions() + ">";
-        } else {
-            CassandraType explicitType = property.findAnnotation(CassandraType.class);
-            resolved = explicitType == null
-                    ? typeResolver.resolve(
-                            genericType(property), type -> mappedUdtName(mappingContext, type))
-                    : explicitAnnotationType(explicitType);
+    private List<String> columnNames(List<ColumnSpecification> columns) {
+        return columns.stream().map(column -> column.getName().asInternal()).toList();
+    }
+
+    private RenderedField parseRenderedField(String cql) {
+        int identifierEnd = identifierEnd(cql);
+        int typeStart = identifierEnd;
+        while (typeStart < cql.length() && Character.isWhitespace(cql.charAt(typeStart))) {
+            typeStart++;
+        }
+        if (typeStart == identifierEnd || typeStart == cql.length()) {
+            throw new IllegalArgumentException("Invalid Spring Data Cassandra field specification: " + cql);
         }
 
-        if (property.isAnnotationPresent(Frozen.class) && !resolved.startsWith("frozen<")) {
-            return "frozen<" + resolved + ">";
+        String identifier = cql.substring(0, identifierEnd);
+        String name = CqlIdentifier.fromCql(identifier).asInternal();
+        return new RenderedField(name, cql.substring(typeStart));
+    }
+
+    private int identifierEnd(String cql) {
+        if (cql.isEmpty()) {
+            throw new IllegalArgumentException("Spring Data Cassandra rendered an empty field specification");
         }
-        return resolved;
-    }
-
-    private String explicitAnnotationType(CassandraType annotation) {
-        CassandraType.Name[] arguments = annotation.typeArguments();
-        return switch (annotation.type()) {
-            case LIST -> collectionAnnotationType("list", arguments, 1, annotation.userTypeName());
-            case SET -> collectionAnnotationType("set", arguments, 1, annotation.userTypeName());
-            case MAP -> collectionAnnotationType("map", arguments, 2, annotation.userTypeName());
-            case TUPLE -> tupleAnnotationType(arguments, annotation.userTypeName());
-            case UDT -> udtAnnotationType(annotation.userTypeName(), false);
-            case VECTOR -> throw new IllegalArgumentException(
-                    "Use @VectorType to declare a Cassandra vector property");
-            default -> scalarAnnotationType(annotation.type());
-        };
-    }
-
-    private String collectionAnnotationType(
-            String collection,
-            CassandraType.Name[] arguments,
-            int expectedArguments,
-            String userTypeName) {
-        if (arguments.length != expectedArguments) {
-            throw new IllegalArgumentException("@CassandraType " + collection
-                    + " requires " + expectedArguments + " type argument(s)");
+        if (cql.charAt(0) != '"') {
+            for (int index = 0; index < cql.length(); index++) {
+                if (Character.isWhitespace(cql.charAt(index))) {
+                    return index;
+                }
+            }
+            return cql.length();
         }
-        List<String> types = new ArrayList<>(arguments.length);
-        for (CassandraType.Name argument : arguments) {
-            types.add(annotationArgumentType(argument, userTypeName));
+
+        for (int index = 1; index < cql.length(); index++) {
+            if (cql.charAt(index) != '"') {
+                continue;
+            }
+            if (index + 1 < cql.length() && cql.charAt(index + 1) == '"') {
+                index++;
+                continue;
+            }
+            return index + 1;
         }
-        return collection + "<" + String.join(", ", types) + ">";
+        throw new IllegalArgumentException("Unterminated CQL identifier in field specification: " + cql);
     }
 
-    private String tupleAnnotationType(CassandraType.Name[] arguments, String userTypeName) {
-        if (arguments.length == 0) {
-            throw new IllegalArgumentException("@CassandraType tuple requires at least one type argument");
+    private String quoteMappedUdtNames(String cqlType, Set<String> mappedUdtNames) {
+        StringBuilder result = new StringBuilder(cqlType.length());
+        for (int index = 0; index < cqlType.length();) {
+            char character = cqlType.charAt(index);
+            if (character == '"') {
+                int end = quotedIdentifierEnd(cqlType, index);
+                result.append(cqlType, index, end);
+                index = end;
+                continue;
+            }
+            if (Character.isLetter(character) || character == '_') {
+                int end = index + 1;
+                while (end < cqlType.length()) {
+                    char tokenCharacter = cqlType.charAt(end);
+                    if (!Character.isLetterOrDigit(tokenCharacter) && tokenCharacter != '_') {
+                        break;
+                    }
+                    end++;
+                }
+                String token = cqlType.substring(index, end);
+                result.append(mappedUdtNames.contains(token) ? CqlNames.quote(token) : token);
+                index = end;
+                continue;
+            }
+            result.append(character);
+            index++;
         }
-        List<String> types = new ArrayList<>(arguments.length);
-        for (CassandraType.Name argument : arguments) {
-            types.add(annotationArgumentType(argument, userTypeName));
+        return result.toString();
+    }
+
+    private int quotedIdentifierEnd(String cql, int start) {
+        for (int index = start + 1; index < cql.length(); index++) {
+            if (cql.charAt(index) != '"') {
+                continue;
+            }
+            if (index + 1 < cql.length() && cql.charAt(index + 1) == '"') {
+                index++;
+                continue;
+            }
+            return index + 1;
         }
-        return "tuple<" + String.join(", ", types) + ">";
+        throw new IllegalArgumentException("Unterminated CQL identifier in type: " + cql);
     }
 
-    private String annotationArgumentType(CassandraType.Name type, String userTypeName) {
-        return type == CassandraType.Name.UDT
-                ? udtAnnotationType(userTypeName, true)
-                : scalarAnnotationType(type);
-    }
-
-    private String udtAnnotationType(String userTypeName, boolean frozen) {
-        if (userTypeName == null || userTypeName.isBlank()) {
-            throw new IllegalArgumentException("@CassandraType UDT requires userTypeName");
-        }
-        String name = CqlNames.quote(CqlNames.internal(userTypeName));
-        return frozen ? "frozen<" + name + ">" : name;
-    }
-
-    private String scalarAnnotationType(CassandraType.Name type) {
-        return switch (type) {
-            case LIST, SET, MAP, TUPLE, UDT, VECTOR ->
-                    throw new IllegalArgumentException("Cassandra type " + type + " is not scalar");
-            default -> type.name().toLowerCase(Locale.ROOT);
-        };
-    }
-
-    private String mappedUdtName(CassandraMappingContext mappingContext, Class<?> type) {
-        CassandraPersistentEntity<?> entity = mappingContext.getPersistentEntity(type);
-        if (entity != null && entity.isUserDefinedType()) {
-            return entity.getTableName().asInternal();
-        }
-        return null;
-    }
-
-    private Type genericType(CassandraPersistentProperty property) {
-        Field field = property.getField();
-        if (field != null) {
-            return field.getGenericType();
-        }
-        Method getter = property.getGetter();
-        if (getter != null) {
-            return getter.getGenericReturnType();
-        }
-        return property.getType();
-    }
-
-    private List<String> keyNames(List<KeyPart> parts) {
-        return parts.stream()
-                .sorted(Comparator.comparingInt(KeyPart::ordinal))
-                .map(KeyPart::name)
-                .toList();
-    }
-
-    private Map<String, ClusteringOrder> clusteringOrders(List<KeyPart> parts) {
-        Map<String, ClusteringOrder> orders = new LinkedHashMap<>();
-        parts.stream()
-                .sorted(Comparator.comparingInt(KeyPart::ordinal))
-                .forEach(part -> orders.put(part.name(), part.clusteringOrder()));
-        return orders;
-    }
-
-    private ClusteringOrder clusteringOrder(Ordering ordering) {
-        return ordering == Ordering.DESCENDING ? ClusteringOrder.DESC : ClusteringOrder.ASC;
-    }
-
-    private record KeyPart(int ordinal, String name, ClusteringOrder clusteringOrder) {
+    private record RenderedField(String name, String cqlType) {
     }
 }

@@ -7,7 +7,6 @@ import io.github.nguyenductrongdev.automigration.cassandra.compare.CassandraSche
 import io.github.nguyenductrongdev.automigration.cassandra.execute.CassandraMigrationExecutor;
 import io.github.nguyenductrongdev.automigration.cassandra.inspect.CassandraSchemaInspector;
 import io.github.nguyenductrongdev.automigration.cassandra.log.CassandraMigrationPlanLogger;
-import io.github.nguyenductrongdev.automigration.cassandra.scan.JavaTypeResolver;
 import io.github.nguyenductrongdev.automigration.cassandra.scan.SpringDataCassandraSchemaScanner;
 import io.github.nguyenductrongdev.automigration.core.AutoMigrationCoordinatorConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -15,7 +14,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.data.cassandra.core.mapping.CassandraMappingContext;
+import org.springframework.data.cassandra.core.convert.CassandraConverter;
 
 /** Spring beans imported by {@code @EnableCassandraAutoMigration}. */
 @Configuration(proxyBeanMethods = false)
@@ -25,14 +24,8 @@ public class CassandraAutoMigrationConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    JavaTypeResolver cassandraMigrationJavaTypeResolver() {
-        return new JavaTypeResolver();
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    SpringDataCassandraSchemaScanner cassandraMigrationSchemaScanner(JavaTypeResolver typeResolver) {
-        return new SpringDataCassandraSchemaScanner(typeResolver);
+    SpringDataCassandraSchemaScanner cassandraMigrationSchemaScanner(CassandraConverter converter) {
+        return new SpringDataCassandraSchemaScanner(converter);
     }
 
     @Bean
@@ -64,13 +57,12 @@ public class CassandraAutoMigrationConfiguration {
     CassandraAutoMigrationProvider cassandraAutoMigrationProvider(
             CassandraAutoMigrationProperties properties,
             CqlSession session,
-            CassandraMappingContext mappingContext,
             SpringDataCassandraSchemaScanner scanner,
             CassandraSchemaInspector inspector,
             CassandraSchemaComparator comparator,
             CassandraMigrationExecutor executor,
             CassandraMigrationPlanLogger planLogger) {
         return new CassandraAutoMigrationProvider(
-                properties, session, mappingContext, scanner, inspector, comparator, executor, planLogger);
+                properties, session, scanner, inspector, comparator, executor, planLogger);
     }
 }

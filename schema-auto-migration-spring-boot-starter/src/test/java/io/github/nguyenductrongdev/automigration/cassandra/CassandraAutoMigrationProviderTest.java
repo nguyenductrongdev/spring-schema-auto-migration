@@ -12,8 +12,6 @@ import io.github.nguyenductrongdev.automigration.cassandra.schema.SchemaDifferen
 import io.github.nguyenductrongdev.automigration.cassandra.schema.SchemaDifferenceType;
 import io.github.nguyenductrongdev.automigration.core.PreparedSchemaMigration;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.cassandra.core.mapping.CassandraMappingContext;
-
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -138,7 +136,6 @@ class CassandraAutoMigrationProviderTest {
         properties.setKeyspaceName("sample");
 
         CqlSession session = mock(CqlSession.class);
-        CassandraMappingContext mappingContext = mock(CassandraMappingContext.class);
         SpringDataCassandraSchemaScanner scanner = mock(SpringDataCassandraSchemaScanner.class);
         CassandraSchemaInspector inspector = mock(CassandraSchemaInspector.class);
         CassandraSchemaComparator comparator = mock(CassandraSchemaComparator.class);
@@ -146,12 +143,12 @@ class CassandraAutoMigrationProviderTest {
         CassandraMigrationPlanLogger planLogger = mock(CassandraMigrationPlanLogger.class);
         CassandraSchema schema = CassandraSchema.empty();
 
-        when(scanner.scan(mappingContext)).thenReturn(schema);
+        when(scanner.scan()).thenReturn(schema);
         when(inspector.inspect(session, "sample")).thenReturn(schema);
         when(comparator.compare("sample", schema, schema)).thenReturn(plan);
 
         CassandraAutoMigrationProvider provider = new CassandraAutoMigrationProvider(
-                properties, session, mappingContext, scanner, inspector, comparator, executor, planLogger);
+                properties, session, scanner, inspector, comparator, executor, planLogger);
         return new TestFixture(provider, session, scanner, inspector, comparator, executor, planLogger);
     }
 

@@ -5,12 +5,15 @@ import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.elasticsearch.core.mapping.ElasticsearchPersistentEntity;
+import org.springframework.data.elasticsearch.core.mapping.ElasticsearchPersistentProperty;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Scans Spring Data Elasticsearch document entities into deterministic index definitions. */
@@ -40,11 +43,52 @@ public class ElasticsearchSchemaScanner {
                     indexName,
                     entityType,
                     indexOperations.createSettings(entityType),
-                    indexOperations.createMapping(entityType)));
+                    mappingWithStoredId(entity, indexOperations.createMapping(entityType))));
         }
 
         definitions.sort((left, right) -> left.indexName().compareTo(right.indexName()));
         return List.copyOf(definitions);
+    }
+
+    private Map<String, Object> mappingWithStoredId(
+            ElasticsearchPersistentEntity<?> entity, Map<String, Object> mapping) {
+        ElasticsearchPersistentProperty idProperty = entity.getIdProperty();
+        if (!entity.storeIdInSource() || idProperty == null) {
+            return mapping;
+        }
+
+        Map<String, Object> properties = copyProperties(entity.getType(), mapping.get("properties"));
+        if (properties.containsKey(idProperty.getFieldName())) {
+            return mapping;
+        }
+
+        // Spring Data stores the ID in _source by default but only maps it when @Field is present.
+        Map<String, Object> idMapping = new LinkedHashMap<>();
+        idMapping.put("type", "keyword");
+        properties.put(idProperty.getFieldName(), idMapping);
+
+        Map<String, Object> enrichedMapping = new LinkedHashMap<>(mapping);
+        enrichedMapping.put("properties", properties);
+        return enrichedMapping;
+    }
+
+    private Map<String, Object> copyProperties(Class<?> entityType, Object value) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        if (value == null) {
+            return properties;
+        }
+        if (!(value instanceof Map<?, ?> source)) {
+            throw new IllegalStateException(
+                    "Elasticsearch mapping properties for " + entityType.getName() + " must be an object");
+        }
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                throw new IllegalStateException(
+                        "Elasticsearch mapping property names for " + entityType.getName() + " must be strings");
+            }
+            properties.put(key, entry.getValue());
+        }
+        return properties;
     }
 
     private void validateCoordinates(Class<?> entityType, IndexCoordinates coordinates) {

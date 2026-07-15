@@ -29,15 +29,11 @@ public class ElasticsearchMigrationPlanLogger {
             for (int index = 0; index < plan.operations().size(); index++) {
                 ElasticsearchMigrationOperation operation = plan.operations().get(index);
                 PLAN_LOGGER.info(
-                        "[ELASTICSEARCH][DRY_RUN][API][{}/{}] {} {}",
+                        "[ELASTICSEARCH][DRY_RUN][API][{}/{}] {} {} body={}",
                         index + 1,
                         plan.operations().size(),
                         operation.method(),
-                        singleLine(operation.path()));
-                PLAN_LOGGER.info(
-                        "[ELASTICSEARCH][DRY_RUN][BODY][{}/{}] {}",
-                        index + 1,
-                        plan.operations().size(),
+                        singleLine(operation.path()),
                         singleLine(Document.from(operation.body()).toJson()));
             }
         }
