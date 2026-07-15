@@ -50,5 +50,5 @@ jobs:
       - name: Verify against Cassandra, Elasticsearch 8, and Elasticsearch 9
         run: >-
           ./mvnw -B --no-transfer-progress
-          -pl schema-auto-migration-spring-boot-starter,elasticsearch9-compatibility-tests
+          -pl schema-auto-migration-spring-boot-starter,compatibility-tests/elasticsearch-9
           -am -Pintegration-tests verify

@@ -45,7 +45,7 @@
         <module>schema-auto-migration-spring-boot-starter</module>
         <module>cassandra-sample-app</module>
         <module>elasticsearch-sample-app</module>
-        <module>elasticsearch9-compatibility-tests</module>
+        <module>compatibility-tests/elasticsearch-9</module>
     </modules>
 
     <properties>

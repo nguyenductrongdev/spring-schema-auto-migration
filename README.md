@@ -300,7 +300,7 @@ Run the Testcontainers integration test when Docker is available:
 ./mvnw -Pintegration-tests verify
 ```
 
-The integration profile runs Testcontainers suites for Cassandra 4.1, Elasticsearch 8.18 on Spring Boot 3.5, and Elasticsearch 9.4 on Spring Boot 4.1. It applies create and additive update plans and verifies that repeated comparisons are empty. The ES9 suite lives in [elasticsearch9-compatibility-tests](elasticsearch9-compatibility-tests) and is never published as a library artifact.
+The integration profile runs Testcontainers suites for Cassandra 4.1, Elasticsearch 8.18 on Spring Boot 3.5, and Elasticsearch 9.4 on Spring Boot 4.1. It applies create and additive update plans and verifies that repeated comparisons are empty. The ES9 suite lives in [compatibility-tests/elasticsearch-9](compatibility-tests/elasticsearch-9) and is never published as a library artifact.
 
 ## SNAPSHOT publishing
 
