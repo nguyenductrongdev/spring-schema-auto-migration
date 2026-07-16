@@ -13,7 +13,7 @@
         <java.version>17</java.version>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-boot.version>3.5.16</spring-boot.version>
+        <spring-boot.version>4.1.0</spring-boot.version>
         <schema-auto-migration.version>0.1.0-SNAPSHOT</schema-auto-migration.version>
     </properties>
 
