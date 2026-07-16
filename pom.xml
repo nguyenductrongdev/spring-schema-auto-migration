@@ -50,7 +50,7 @@
 
         <!-- Lowest supported Spring Boot line. CI overrides this for compatibility builds. -->
         <spring-boot.version>3.5.16</spring-boot.version>
-        <testcontainers.version>1.21.4</testcontainers.version>
+        <testcontainers.version>2.0.5</testcontainers.version>
 
         <maven-clean-plugin.version>3.4.1</maven-clean-plugin.version>
         <maven-compiler-plugin.version>3.14.1</maven-compiler-plugin.version>
