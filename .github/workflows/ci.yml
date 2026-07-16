@@ -9,46 +9,107 @@ permissions:
 
 jobs:
   unit:
-    name: Unit tests and package
+    name: Java 17 baseline
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: Set up Java 21
-        uses: actions/setup-java@v5
+      - name: Set up Java 17
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "17"
           cache: maven
 
       - name: Enable Maven Wrapper
         run: chmod +x mvnw
 
-      - name: Verify
+      - name: Verify baseline build
         run: ./mvnw -B --no-transfer-progress clean verify
 
-  integration:
-    name: Provider integration tests
+  compatibility:
+    name: Boot ${{ matrix.boot }} / Java ${{ matrix.java }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - boot: 3.5.16
+            java: 17
+          - boot: 4.0.7
+            java: 17
+          - boot: 4.1.0
+            java: 17
+          - boot: 3.5.16
+            java: 25
+          - boot: 4.1.0
+            java: 25
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: Set up Java 21
-        uses: actions/setup-java@v5
+      - name: Set up Java ${{ matrix.java }}
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "${{ matrix.java }}"
           cache: maven
 
       - name: Enable Maven Wrapper
         run: chmod +x mvnw
 
-      - name: Verify against Cassandra
+      - name: Install Java 17 baseline artifacts
+        run: ./mvnw -B --no-transfer-progress -DskipTests clean install
+
+      - name: Test installed JAR as a Boot ${{ matrix.boot }} consumer
         run: >-
           ./mvnw -B --no-transfer-progress
-          -pl schema-auto-migration-spring-boot-starter
-          -am -Pintegration-tests verify
+          -f compatibility-tests/pom.xml
+          -Dspring-boot.version=${{ matrix.boot }}
+          clean verify
+
+  integration:
+    name: Boot ${{ matrix.boot }} / Cassandra ${{ matrix.cassandra }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - boot: 3.5.16
+            java: 17
+            cassandra: 4.1.11
+          - boot: 3.5.16
+            java: 17
+            cassandra: 5.0.8
+          - boot: 4.0.7
+            java: 21
+            cassandra: 5.0.8
+          - boot: 4.1.0
+            java: 25
+            cassandra: 5.0.8
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Java ${{ matrix.java }}
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
+        with:
+          distribution: temurin
+          java-version: "${{ matrix.java }}"
+          cache: maven
+
+      - name: Enable Maven Wrapper
+        run: chmod +x mvnw
+
+      - name: Run provider integration tests
+        run: >-
+          ./mvnw -B --no-transfer-progress
+          -pl schema-auto-migration-cassandra-spring-boot-starter
+          -am -Pintegration-tests
+          -Dspring-boot.version=${{ matrix.boot }}
+          -Dcassandra.test.image=cassandra:${{ matrix.cassandra }}
+          verify

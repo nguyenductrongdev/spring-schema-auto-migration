@@ -1,6 +1,6 @@
 services:
   cassandra:
-    image: cassandra:4.1.7
+    image: cassandra:5.0.8
     ports:
       - "9042:9042"
     environment:
@@ -15,7 +15,7 @@ services:
       start_period: 30s
 
   cassandra-init:
-    image: cassandra:4.1.7
+    image: cassandra:5.0.8
     depends_on:
       cassandra:
         condition: service_healthy
@@ -24,6 +24,6 @@ services:
       - -c
       - >-
         echo "CREATE KEYSPACE IF NOT EXISTS sample_app
-        WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};"
+        WITH replication = {'class': 'NetworkTopologyStrategy', 'datacenter1': 1};"
         | cqlsh cassandra 9042
     restart: "no"

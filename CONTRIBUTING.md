@@ -4,27 +4,39 @@ Thanks for helping improve Spring Schema Auto Migration.
 
 ## Safety boundary
 
-Every automatic migration must remain additive and idempotent. Pull requests must not add automatic drop, rename, type change, primary-key change, recreation, data migration, or backfill behavior.
+Every automatic migration must remain additive and idempotent. Pull requests must not add automatic drop, rename, type change, primary-key change, clustering-order mutation, recreation, data migration, backfill, or keyspace replication behavior.
 
-Unsupported differences should be represented as reports, never executable database operations.
+Unsupported differences must remain reportable validation failures, never executable database operations. All providers must finish validation before any provider begins execution.
 
-## Development
+## Development requirements
 
-Requirements:
+- JDK 17 or newer
+- Docker for Cassandra integration tests
+- The included Maven Wrapper
 
-- JDK 21
-- Docker for integration tests
-
-Run unit tests and packaging:
+Build the Java 17 baseline:
 
 ```bash
 ./mvnw clean verify
 ```
 
-Run the Cassandra Testcontainers suite:
+Install the artifacts and test an independent consumer against another Boot line:
 
 ```bash
-./mvnw -Pintegration-tests verify
+./mvnw clean install
+./mvnw -f compatibility-tests/pom.xml -Dspring-boot.version=4.1.0 clean verify
 ```
 
-Please add focused tests for scanner, comparator, operation ordering, and execution behavior when changing the migration core.
+Run Cassandra integration tests:
+
+```bash
+./mvnw -Pintegration-tests -Dcassandra.test.image=cassandra:5.0.8 verify
+```
+
+The `compatibility-tests` project intentionally does not inherit the repository parent and is not part of the reactor. Keep it representative of a real consumer application.
+
+Add focused tests for mapping, comparison, operation ordering, schema agreement, lifecycle ordering, and failure behavior when changing migration logic. Changes to supported Spring Boot or Cassandra lines must update the CI matrix and README compatibility table in the same pull request.
+
+## Security
+
+Do not commit database credentials, tokens, certificates, private endpoints, or production schema dumps. Report security findings privately according to [SECURITY.md](SECURITY.md).

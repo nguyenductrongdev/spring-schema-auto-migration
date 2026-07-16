@@ -4,14 +4,18 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>io.github.nguyenductrongdev</groupId>
-        <artifactId>schema-auto-migration-parent</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
-    </parent>
+    <groupId>io.github.nguyenductrongdev</groupId>
+    <artifactId>schema-auto-migration-cassandra-compatibility-tests</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>Schema Auto Migration Cassandra Compatibility Tests</name>
 
-    <artifactId>cassandra-sample-app</artifactId>
-    <name>Schema Auto Migration Cassandra Sample</name>
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <spring-boot.version>3.5.16</spring-boot.version>
+        <schema-auto-migration.version>0.1.0-SNAPSHOT</schema-auto-migration.version>
+    </properties>
 
     <dependencyManagement>
         <dependencies>
@@ -25,15 +29,11 @@
         </dependencies>
     </dependencyManagement>
 
-    <properties>
-        <maven.deploy.skip>true</maven.deploy.skip>
-    </properties>
-
     <dependencies>
         <dependency>
             <groupId>io.github.nguyenductrongdev</groupId>
             <artifactId>schema-auto-migration-cassandra-spring-boot-starter</artifactId>
-            <version>${project.version}</version>
+            <version>${schema-auto-migration.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -45,8 +45,18 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.1</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.4</version>
             </plugin>
         </plugins>
     </build>

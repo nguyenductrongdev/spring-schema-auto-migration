@@ -1,64 +1,43 @@
 # Spring Schema Auto Migration
 
-Extensible, safe additive schema evolution for Spring Boot.
+[![CI](https://github.com/nguyenductrongdev/spring-schema-auto-migration/actions/workflows/ci.yml/badge.svg)](https://github.com/nguyenductrongdev/spring-schema-auto-migration/actions/workflows/ci.yml)
+[![Java 17+](https://img.shields.io/badge/Java-17%2B-007396?logo=openjdk&logoColor=white)](#compatibility)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Spring Schema Auto Migration currently provides a Cassandra migration provider behind a database-neutral library name. It compares Spring Data mappings with the live schema during application startup and applies only explicitly supported additive changes.
+Safe, additive Cassandra schema evolution for Spring Boot applications, derived from Spring Data mappings.
 
-> Create new objects and add new fields only. Never update or delete existing schema objects.
+Spring Schema Auto Migration compares the application's mapped schema with the live Cassandra keyspace during startup. It can log or apply a deterministic set of supported additive changes, and rejects destructive or ambiguous differences before execution.
 
-The project requires Java 21. The Cassandra provider targets Spring Boot 3.5.x, Spring Data Cassandra, Cassandra Java Driver 4.x, and Cassandra Server 4.1+.
+The Cassandra provider is explicitly enabled with `@EnableCassandraAutoMigration`. Adding the dependency alone does not start schema scanning or migration.
 
-## Status
+> **Project status:** `0.1.0-SNAPSHOT` is a pre-release build. Public APIs may change before `1.0.0`.
 
-The current development version is `0.1.0-SNAPSHOT`. It is published to GitHub Packages by pushes to `master`, `main`, and `develop`.
+## Features
 
-The API is pre-release and may change before `1.0.0`.
+- Additive-only Cassandra schema changes
+- `NONE`, `DRY_RUN`, and `SAFE_UPDATE` execution modes
+- Schema discovery from Spring Data Cassandra mapping metadata
+- UDT, table, regular column, static column, and clustering-order support
+- Global validation before any enabled provider starts execution
+- Sequential Cassandra DDL with schema-agreement checks
+- Java 17 bytecode with Spring Boot 3.5 and 4.x support from one starter
+- No migration files, generated reports, or schema history table
 
 ## Compatibility
 
-The main branch follows the Spring Data Cassandra and Cassandra Java Driver versions managed by Spring Boot 3.5.x. The integration suite verifies additive migrations against Cassandra 4.1.
-
-## Provider model
-
-The Maven artifact and top-level namespace are database-neutral. Provider implementations remain explicit:
-
-- Cassandra provider: `io.github.nguyenductrongdev.automigration.cassandra`
-- Future providers can live under sibling namespaces such as `.jdbc`
-- Provider-specific entry points and settings keep their database name, such as `@EnableCassandraAutoMigration` and `cassandra.auto-migration.*`
-
-This keeps consumers from confusing Cassandra behavior with future providers while allowing shared migration abstractions to move into `io.github.nguyenductrongdev.automigration` later.
-
-The Spring Boot auto-configuration and Spring Data Cassandra dependencies are optional. Applications add the normal Spring Boot Cassandra starter, so consuming the library does not activate Cassandra unless the application enables the provider.
-
-## Cassandra supported operations
-
-| Difference | Automatic action |
+| Component | Supported versions |
 | --- | --- |
-| Missing UDT | `CREATE TYPE IF NOT EXISTS` |
-| Missing UDT field | `ALTER TYPE ... ADD IF NOT EXISTS` |
-| Missing table | `CREATE TABLE IF NOT EXISTS` |
-| Missing non-key table column | `ALTER TABLE ... ADD IF NOT EXISTS` |
+| Spring Boot | `3.5.x`, `4.0.x`, `4.1.x` |
+| Java | 17 or later, within the range supported by the selected Spring Boot version |
+| Apache Cassandra | `4.1.x`, `5.0.x` |
 
-All generated operations are additive. A second run against the migrated schema produces no statements.
+Artifacts are compiled with `--release 17`. The application's Spring Boot parent or imported BOM controls the Spring Data Cassandra and Cassandra Java Driver versions. The starter does not require a separate artifact for Spring Boot 3 and Spring Boot 4.
 
-## Never automated
+See the [CI workflow](.github/workflows/ci.yml) for the tested compatibility matrix.
 
-The library reports but never executes:
+## Installation
 
-- Dropping tables, columns, UDTs, or UDT fields
-- Renaming tables, columns, UDTs, or UDT fields
-- Changing column or UDT field types
-- Changing partition, clustering, or primary keys
-- Changing clustering column order (`ASC`/`DESC`)
-- Recreating tables or UDTs
-- Data migration or backfill
-- Index, materialized view, table option, and replication changes
-
-The comparison is stateless. A rename cannot be proven from two schema snapshots, so it normally appears as a new mapped object plus an old unmanaged object. No rename or data copy is attempted.
-
-## Install from GitHub Packages
-
-Add the GitHub Packages repository and dependency:
+SNAPSHOT artifacts are published to GitHub Packages. Configure the package repository and add the Cassandra starter:
 
 ```xml
 <repositories>
@@ -70,191 +49,242 @@ Add the GitHub Packages repository and dependency:
         </releases>
         <snapshots>
             <enabled>true</enabled>
-            <updatePolicy>always</updatePolicy>
         </snapshots>
     </repository>
 </repositories>
 
 <dependencies>
-    <!-- Add the normal Spring Data Cassandra starter. -->
-    <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-data-cassandra</artifactId>
-    </dependency>
     <dependency>
         <groupId>io.github.nguyenductrongdev</groupId>
-        <artifactId>schema-auto-migration-spring-boot-starter</artifactId>
+        <artifactId>schema-auto-migration-cassandra-spring-boot-starter</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </dependency>
 </dependencies>
 ```
 
-GitHub Packages Maven downloads require credentials. Add a server with the same `github` id to `~/.m2/settings.xml` (or `%USERPROFILE%\.m2\settings.xml` on Windows):
+The starter includes `spring-boot-starter-data-cassandra` transitively. Applications do not need to declare it a second time or change their existing Spring Boot parent.
 
-```xml
-<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
-          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
-    <servers>
-        <server>
-            <id>github</id>
-            <username>YOUR_GITHUB_USERNAME</username>
-            <password>${env.GITHUB_TOKEN}</password>
-        </server>
-    </servers>
-</settings>
-```
-
-Use a GitHub token with `read:packages` in `GITHUB_TOKEN`. A complete example is in [docs/settings.xml](docs/settings.xml).
-
-Maven caches SNAPSHOT metadata. Force an immediate check for the newest timestamped artifact with:
+GitHub Packages requires authenticated Maven access. Configure a Maven server named `github` using [docs/settings.xml](docs/settings.xml), then provide a token with `read:packages` through the environment:
 
 ```bash
-mvn -U clean verify
+export GITHUB_TOKEN="<token-with-read-packages>"
 ```
 
-The `-U` flag forces Maven to check remote repositories for updated releases and SNAPSHOTs instead of waiting for the normal update interval.
+PowerShell:
 
-## Enable Cassandra migration
+```powershell
+$env:GITHUB_TOKEN = "<token-with-read-packages>"
+```
 
-Add the annotation to the Spring Boot application:
+Use `mvn -U` when Maven must refresh a timestamped SNAPSHOT. Never commit package tokens or Maven settings containing literal credentials.
+
+The optional `schema-auto-migration-bom` aligns versions when multiple library modules are used. It is not required for the single starter dependency above.
+
+## Quick Start
+
+### 1. Enable the Cassandra provider
+
+Add `@EnableCassandraAutoMigration` to the Spring Boot application:
 
 ```java
+package com.example.application;
+
 import io.github.nguyenductrongdev.automigration.cassandra.EnableCassandraAutoMigration;
+import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
 @EnableCassandraAutoMigration
 public class Application {
+
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
 }
 ```
 
-Configure the normal Spring Cassandra connection and migration mode:
+### 2. Configure Cassandra and migration mode
+
+Connection settings use Spring Boot's standard `spring.cassandra.*` properties. Only the migration mode is provider-specific:
 
 ```yaml
 spring:
   cassandra:
-    contact-points: localhost
-    port: 9042
-    local-datacenter: datacenter1
-    keyspace-name: application_keyspace
+    contact-points: ${CASSANDRA_CONTACT_POINTS:localhost}
+    port: ${CASSANDRA_PORT:9042}
+    local-datacenter: ${CASSANDRA_LOCAL_DATACENTER:datacenter1}
+    keyspace-name: ${CASSANDRA_KEYSPACE:application_keyspace}
+    username: ${CASSANDRA_USERNAME}
+    password: ${CASSANDRA_PASSWORD}
     schema-action: none
 
-cassandra:
-  auto-migration:
-    mode: DRY_RUN
+schema-auto-migration:
+  cassandra:
+    mode: ${CASSANDRA_MIGRATION_MODE:DRY_RUN}
 ```
 
-The keyspace must already exist. Keyspace creation and replication changes are deliberately outside this library's scope. In `SAFE_UPDATE`, a missing keyspace fails application startup before entity scanning, comparison, or CQL execution.
+Remove `username` and `password` only for clusters configured without authentication. TLS, contact points, credentials, datacenter, and keyspace remain owned by Spring Boot's Cassandra configuration.
 
-## Execution modes
+The selected keyspace must already exist. The provider never creates keyspaces or changes replication settings. A missing or inaccessible keyspace aborts application startup.
+
+### 3. Review and apply the plan
 
 | Mode | Behavior |
 | --- | --- |
-| `NONE` | Default. Skips schema scanning and comparison |
-| `DRY_RUN` | Compares schemas and logs the ordered migration plan without executing it |
-| `SAFE_UPDATE` | Rejects unsupported differences, then executes only provider-supported additive operations |
+| `NONE` | Default. Skips scanning, comparison, and migration |
+| `DRY_RUN` | Logs the complete ordered plan; executes no CQL and writes no report file |
+| `SAFE_UPDATE` | Validates the complete plan, then executes supported additive CQL |
 
-`DRY_RUN` logs the complete ordered plan through the provider's dedicated plan logger. It never creates a report file or executes a migration.
+A recommended rollout starts with `DRY_RUN`. Review the logger `io.github.nguyenductrongdev.automigration.plan.cassandra`, then explicitly switch to `SAFE_UPDATE`.
 
-Applications can route this logger to a separate file or centralized logging system through their normal Logback or Log4j configuration.
+Unsupported differences fail startup in both `DRY_RUN` and `SAFE_UPDATE`. In `DRY_RUN`, the complete plan is logged before the failure is raised.
 
-`NONE` is the default. For a first rollout, enable `DRY_RUN`, inspect the logged plan, and then enable `SAFE_UPDATE`.
+## Safety Model
 
-Any unsupported difference always fails startup before the first additive statement is executed. In `DRY_RUN`, the complete plan is logged before startup fails.
+### Applied automatically
 
-For Cassandra, existing tables and UDTs without a mapped application type are always reported as unsupported differences. Use a dedicated keyspace when other applications own schema objects that are not part of this application's mappings.
+| Detected difference | Generated action |
+| --- | --- |
+| Missing UDT | `CREATE TYPE IF NOT EXISTS` |
+| Missing UDT field | `ALTER TYPE ... ADD IF NOT EXISTS` |
+| Missing table | `CREATE TABLE IF NOT EXISTS`, including primary key and clustering order |
+| Missing non-key column | `ALTER TABLE ... ADD IF NOT EXISTS`, including static columns |
 
-If `cassandra.auto-migration.keyspace-name` is omitted, the starter uses the keyspace from the active `CqlSession`.
+Generated statements are additive and idempotent. UDTs are created before tables that reference them, and UDT fields are added before dependent table columns.
 
-## Mapping support
+### Rejected at startup
 
-The scanner reads Spring Data Cassandra types registered in `CassandraMappingContext`:
+The provider reports these differences and executes no migration plan:
 
-- `@Table`
-- `@UserDefinedType`
-- `@PrimaryKey`
-- `@PrimaryKeyClass` and `@PrimaryKeyColumn`, including clustering `ASC`/`DESC` ordering
+- Existing table or UDT is not represented by an application mapping
+- Existing column or UDT field is absent from the mapped schema
+- Column or UDT field type differs
+- Partition key or clustering key differs
+- Clustering order differs
+- Column kind differs between regular and static
+
+Renames are not inferred. A rename appears as a new mapped object plus an unmanaged existing object, so validation fails instead of attempting a data move or destructive operation.
+
+### Outside the managed scope
+
+The provider does not create, alter, or reconcile:
+
+- Keyspaces and replication settings
+- Secondary indexes and custom indexes
+- Materialized views
+- Table options
+- Data migrations and backfills
+- Manual migration scripts, version history, or checksums
+
+Use reviewed, explicit migrations for changes outside this scope.
+
+## Mapping Support
+
+The scanner uses the active Spring Data Cassandra `CassandraConverter` and public schema metadata APIs. Supported mapping features include:
+
+- `@Table` and `@UserDefinedType`
+- `@PrimaryKey`, `@PrimaryKeyClass`, and `@PrimaryKeyColumn`
+- Clustering `ASC` and `DESC` ordering
 - `@Column`, including static columns
-- `@CassandraType`
-- `@Frozen`
-- `@VectorType` when the Cassandra server supports vectors
+- `@CassandraType`, `@Frozen`, and `@VectorType`
 - `@Transient`
+- Scalars, enums, arrays, `Optional`, collections, maps, and mapped UDTs
+- Application custom writing converters registered with Spring Data Cassandra
 
-Common scalar types, enums, arrays, `Optional`, `List`, `Set`, `Map`, and mapped UDTs are converted to CQL types through Spring Data Cassandra's public mapping metadata. Unknown Java types fail explicitly rather than guessing a Cassandra type.
+`@VectorType` requires a Cassandra server and driver combination that supports vectors. Unknown Java types fail explicitly rather than being mapped by guesswork.
 
-## How startup works
+## Startup Lifecycle
 
-1. Spring finishes creating all non-lazy singleton beans, including standard Spring Boot data initialization.
-2. Enabled providers scan their Spring Data mapping contexts, inspect their databases, and build plans in parallel using Java 21 virtual threads.
-3. The coordinator waits for every provider and validates all completed plans in deterministic provider order.
-4. If any planning or validation fails, no provider starts execution.
-5. Valid `SAFE_UPDATE` providers execute in parallel. Operations inside each provider remain sequential to preserve dependencies.
-6. The coordinator waits for every execution before Spring starts lifecycle components such as servlet and reactive web servers.
+1. Spring creates and initializes non-lazy singleton beans, including the normal Boot data-initialization path.
+2. Enabled providers scan mappings, inspect their databases, and prepare plans concurrently on a bounded executor.
+3. The coordinator waits for all plans and validates every provider before any provider executes.
+4. Valid providers execute concurrently. Operations within the Cassandra provider remain sequential.
+5. Cassandra schema agreement is checked after every DDL statement.
+6. Spring lifecycle components can start accepting traffic only after all enabled migrations finish.
 
-A migration failure aborts application-context refresh before the web server starts accepting requests.
+Planning, validation, or execution failure aborts application-context startup. Validation prevents known unsupported plans from causing partial work, but execution across different databases cannot be globally transactional.
 
-Missing UDTs are created before tables that can reference them. Existing UDT fields are added before table columns and new tables are processed.
+## Dedicated DDL Credentials
 
-Execution cannot be atomic across different databases. A runtime failure in one provider cannot roll back changes already acknowledged by another provider, but global validation prevents known unsupported plans from causing this kind of partial execution.
+By default, migrations use Spring Boot's application `CqlSession`, including its contact points, datacenter, keyspace, TLS, username, and password.
 
-## Sample applications
+Applications that separate DML and DDL privileges can register one `CassandraMigrationSession` bean. Do not register a second raw `CqlSession` bean, because that can replace Spring Boot's application-session auto-configuration.
 
-The [cassandra-sample-app](cassandra-sample-app) module contains a `Customer` table, an `Address` UDT, a repository, and Docker Compose setup.
+- Use `CassandraMigrationSession.owned(session)` when Spring should close the dedicated session.
+- Use `CassandraMigrationSession.of(session)` when another component owns the session lifecycle.
 
-On macOS/Linux:
+The selected session must have a configured keyspace and the permissions required for schema inspection and supported `CREATE` or `ALTER` operations. Keyspace creation and `DROP` permissions are not required. Keep credentials in environment variables or a secret manager; migration logs never include connection passwords.
+
+## Sample Application
+
+The [cassandra-sample-app](cassandra-sample-app) module contains a mapped table, a UDT, a repository, and a Docker Compose environment using Cassandra 5.
+
+From the repository root:
 
 ```bash
-cd cassandra-sample-app
-docker compose up -d
-../mvnw spring-boot:run
+./mvnw -DskipTests clean install
+docker compose -f cassandra-sample-app/docker-compose.yml up -d
+./mvnw -f cassandra-sample-app/pom.xml spring-boot:run
 ```
 
-On Windows PowerShell:
+The sample starts in `DRY_RUN`. Apply its reviewed plan with:
 
-```powershell
-cd cassandra-sample-app
-docker compose up -d
-..\mvnw.cmd spring-boot:run
+```bash
+CASSANDRA_MIGRATION_MODE=SAFE_UPDATE \
+  ./mvnw -f cassandra-sample-app/pom.xml spring-boot:run
 ```
 
-The sample defaults to `DRY_RUN`. To apply the logged schema:
+On Windows, use `mvnw.cmd` and set `CASSANDRA_MIGRATION_MODE` in PowerShell before running the application.
 
-```powershell
-$env:CASSANDRA_MIGRATION_MODE = "SAFE_UPDATE"
-..\mvnw.cmd spring-boot:run
+Stop and remove the local Cassandra environment with:
+
+```bash
+docker compose -f cassandra-sample-app/docker-compose.yml down -v
 ```
 
-## Build and test
+## Building From Source
 
-Use the included Maven Wrapper:
+Requirements:
+
+- JDK 17 or newer
+- Docker for integration tests
+- The included Maven Wrapper
+
+Run the baseline build:
 
 ```bash
 ./mvnw clean verify
 ```
 
-Run the Testcontainers integration test when Docker is available:
+Run Cassandra integration tests against a selected image:
 
 ```bash
-./mvnw -Pintegration-tests verify
+./mvnw -Pintegration-tests \
+  -Dcassandra.test.image=cassandra:5.0.8 \
+  verify
 ```
 
-The integration profile runs the Cassandra 4.1 Testcontainers suite. It applies create and additive update plans and verifies that repeated comparisons are empty.
+Verify the installed starter as an independent Spring Boot consumer:
 
-## SNAPSHOT publishing
+```bash
+./mvnw clean install
+./mvnw -f compatibility-tests/pom.xml \
+  -Dspring-boot.version=4.1.0 \
+  clean verify
+```
 
-`.github/workflows/publish-snapshot.yml` publishes `0.1.0-SNAPSHOT` to GitHub Packages after every push to `master`, `main`, or `develop`. Maven stores each deployment as a timestamped SNAPSHOT while consumers keep the stable dependency string `0.1.0-SNAPSHOT`.
+Use `.\mvnw.cmd` instead of `./mvnw` on Windows. See [CONTRIBUTING.md](CONTRIBUTING.md) for development rules and [docs/publishing.md](docs/publishing.md) for the publishing process.
 
-The workflow uses the repository's `GITHUB_TOKEN` with `packages: write`; no personal token is required for CI publishing. See [docs/publishing.md](docs/publishing.md) for local publishing and consumer details.
+## Support and Security
 
-## Maven Central
+Use [GitHub Issues](https://github.com/nguyenductrongdev/spring-schema-auto-migration/issues) for reproducible bug reports and feature proposals.
 
-The POM already contains project URL, license, SCM, sources, and Javadocs. Publishing to Maven Central is a future step and will additionally require a verified namespace, signing, Central Portal credentials, and a release profile. Consumers should use GitHub Packages until that release process is added.
+Report vulnerabilities through GitHub private vulnerability reporting as described in [SECURITY.md](SECURITY.md). Do not disclose an unpatched vulnerability in a public issue.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Please keep changes inside the additive-only safety boundary.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Changes must preserve the additive-only safety boundary and include focused tests for affected behavior.
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+Spring Schema Auto Migration is available under the [MIT License](LICENSE).
