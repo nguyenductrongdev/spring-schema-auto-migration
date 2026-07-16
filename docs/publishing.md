@@ -1,60 +1,36 @@
-# Publishing
+# Releasing with JitPack
 
 ## Coordinates
 
-A release deploys these artifacts with one shared version:
+JitPack exposes the library modules under the repository-scoped group:
 
 ```text
-io.github.nguyenductrongdev:schema-auto-migration-parent
-io.github.nguyenductrongdev:schema-auto-migration-spring-boot
-io.github.nguyenductrongdev:schema-auto-migration-cassandra-spring-boot-starter
-io.github.nguyenductrongdev:schema-auto-migration-bom
+com.github.nguyenductrongdev.spring-schema-auto-migration:schema-auto-migration-spring-boot
+com.github.nguyenductrongdev.spring-schema-auto-migration:schema-auto-migration-cassandra-spring-boot-starter
+com.github.nguyenductrongdev.spring-schema-auto-migration:schema-auto-migration-bom
 ```
 
-The `cassandra-sample-app` module sets `maven.deploy.skip=true`. The standalone `compatibility-tests` project is outside the reactor and is never deployed.
+The version is a Git tag, commit, or branch snapshot requested from JitPack. The `jitpack.yml` build installs only the publishable modules; `cassandra-sample-app` and the standalone `compatibility-tests` project are not exposed as library artifacts.
 
-## Automated SNAPSHOT publishing
+## Development builds
 
-The `Publish SNAPSHOT` workflow runs on pushes to `master`, `main`, and `develop`. It:
+Use `master-SNAPSHOT` to evaluate the latest code on the default branch. JitPack builds it on demand, so it is mutable and must not be pinned in a production application.
 
-1. Checks out the repository using a commit-pinned action.
-2. Installs JDK 17 and configures Maven server id `github`.
-3. Runs tests and the deploy lifecycle.
-4. Publishes POMs, binaries, source JARs, and Javadoc JARs.
-5. Authenticates with the workflow-scoped `GITHUB_TOKEN`.
+No deploy workflow, Maven server credentials, or package token is required for this public repository.
 
-The workflow has only `contents: read` and `packages: write` permissions. GitHub Packages stores timestamped builds behind `0.1.0-SNAPSHOT`, so consumers keep one dependency version.
+## Release a version
 
-## Publish locally
-
-Create `~/.m2/settings.xml` from [settings.xml](settings.xml). Provide a token with `write:packages` through the environment:
+1. Confirm the full CI matrix passes on the release commit.
+2. Create an annotated semantic-version tag.
+3. Push the tag to GitHub.
+4. Look up the tag on JitPack and confirm every published module builds successfully.
+5. Create the matching GitHub release and update the README dependency version.
 
 ```bash
-export GITHUB_TOKEN=<token-with-write-packages>
-./mvnw clean deploy
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
 ```
 
-PowerShell:
+Consumers then use `v0.1.0` as the Maven dependency version. Never move or reuse a release tag; publish a new patch version for corrections.
 
-```powershell
-$env:GITHUB_TOKEN = "<token-with-write-packages>"
-.\mvnw.cmd clean deploy
-```
-
-Never store the token or Maven settings containing a literal token in this repository.
-
-## Consume the latest SNAPSHOT
-
-Consumers need the GitHub Packages repository in their POM, a matching `github` server in Maven settings, and a token with `read:packages`.
-
-```bash
-mvn -U clean verify
-```
-
-`-U` refreshes remote metadata and resolves the newest timestamped `0.1.0-SNAPSHOT` build.
-
-## Release versions
-
-Do not overwrite a non-SNAPSHOT version. A stable release workflow must run the full compatibility and integration matrix, sign artifacts, publish immutable coordinates, create a Git tag and GitHub release, and preserve provenance.
-
-Publishing to Maven Central additionally requires Central Portal namespace verification, credentials, artifact signing, and release-specific deployment configuration.
+Maven Central remains the intended long-term release channel for stable versions that require canonical `io.github.nguyenductrongdev` coordinates and signed artifacts.

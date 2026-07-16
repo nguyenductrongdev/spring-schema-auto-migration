@@ -1,0 +1,5 @@
+jdk:
+  - openjdk17
+
+install:
+  - ./mvnw -B --no-transfer-progress -DskipTests -pl schema-auto-migration-spring-boot,schema-auto-migration-cassandra-spring-boot-starter,schema-auto-migration-bom -am install

@@ -37,48 +37,30 @@ See the [CI workflow](.github/workflows/ci.yml) for the tested compatibility mat
 
 ## Installation
 
-SNAPSHOT artifacts are published to GitHub Packages. Configure the package repository and add the Cassandra starter:
+Add the JitPack repository and the Cassandra starter to the application POM:
 
 ```xml
 <repositories>
     <repository>
-        <id>github</id>
-        <url>https://maven.pkg.github.com/nguyenductrongdev/spring-schema-auto-migration</url>
-        <releases>
-            <enabled>true</enabled>
-        </releases>
-        <snapshots>
-            <enabled>true</enabled>
-        </snapshots>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
     </repository>
 </repositories>
 
 <dependencies>
     <dependency>
-        <groupId>io.github.nguyenductrongdev</groupId>
+        <groupId>com.github.nguyenductrongdev.spring-schema-auto-migration</groupId>
         <artifactId>schema-auto-migration-cassandra-spring-boot-starter</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>master-SNAPSHOT</version>
     </dependency>
 </dependencies>
 ```
 
 The starter includes `spring-boot-starter-data-cassandra` transitively. Applications do not need to declare it a second time or change their existing Spring Boot parent.
 
-GitHub Packages requires authenticated Maven access. Configure a Maven server named `github` using [docs/settings.xml](docs/settings.xml), then provide a token with `read:packages` through the environment:
+`master-SNAPSHOT` tracks the current development branch and may change between builds. Use a release tag such as `v0.1.0` as the version for reproducible builds after that tag is published. Public JitPack dependencies require no Maven credentials or access token.
 
-```bash
-export GITHUB_TOKEN="<token-with-read-packages>"
-```
-
-PowerShell:
-
-```powershell
-$env:GITHUB_TOKEN = "<token-with-read-packages>"
-```
-
-Use `mvn -U` when Maven must refresh a timestamped SNAPSHOT. Never commit package tokens or Maven settings containing literal credentials.
-
-The optional `schema-auto-migration-bom` aligns versions when multiple library modules are used. It is not required for the single starter dependency above.
+The optional `schema-auto-migration-bom` uses the same JitPack group and version to align multiple library modules. It is not required for the single starter dependency above.
 
 ## Quick Start
 
