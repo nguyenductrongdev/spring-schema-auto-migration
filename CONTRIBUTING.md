@@ -21,7 +21,7 @@ Run unit tests and packaging:
 ./mvnw clean verify
 ```
 
-Run the Cassandra and Elasticsearch Testcontainers suites:
+Run the Cassandra Testcontainers suite:
 
 ```bash
 ./mvnw -Pintegration-tests verify

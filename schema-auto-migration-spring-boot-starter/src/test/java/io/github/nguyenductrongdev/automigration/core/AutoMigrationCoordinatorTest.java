@@ -20,61 +20,61 @@ class AutoMigrationCoordinatorTest {
     void preparesProvidersConcurrentlyAndValidatesInProviderOrder() {
         CyclicBarrier planningBarrier = new CyclicBarrier(2);
         List<String> validations = new CopyOnWriteArrayList<>();
-        SchemaAutoMigrationProvider elasticsearch = provider(
-                "elasticsearch",
+        SchemaAutoMigrationProvider secondary = provider(
+                "secondary",
                 200,
                 () -> {
                     await(planningBarrier);
                     return migration(
-                            () -> validations.add("elasticsearch"),
+                            () -> validations.add("secondary"),
                             () -> {
                             });
                 });
-        SchemaAutoMigrationProvider cassandra = provider(
-                "cassandra",
+        SchemaAutoMigrationProvider primary = provider(
+                "primary",
                 100,
                 () -> {
                     await(planningBarrier);
                     return migration(
-                            () -> validations.add("cassandra"),
+                            () -> validations.add("primary"),
                             () -> {
                             });
                 });
 
-        new AutoMigrationCoordinator(List.of(elasticsearch, cassandra))
+        new AutoMigrationCoordinator(List.of(secondary, primary))
                 .afterSingletonsInstantiated();
 
-        assertThat(validations).containsExactly("cassandra", "elasticsearch");
+        assertThat(validations).containsExactly("primary", "secondary");
     }
 
     @Test
     void validatesEveryPlanBeforeStartingAnyExecution() {
         List<String> validations = new CopyOnWriteArrayList<>();
         List<String> executions = new CopyOnWriteArrayList<>();
-        SchemaAutoMigrationProvider cassandra = provider(
-                "cassandra",
+        SchemaAutoMigrationProvider primary = provider(
+                "primary",
                 100,
                 () -> migration(
-                        () -> validations.add("cassandra"),
-                        () -> executions.add("cassandra")));
-        SchemaAutoMigrationProvider elasticsearch = provider(
-                "elasticsearch",
+                        () -> validations.add("primary"),
+                        () -> executions.add("primary")));
+        SchemaAutoMigrationProvider secondary = provider(
+                "secondary",
                 200,
                 () -> migration(
                         () -> {
-                            validations.add("elasticsearch");
-                            throw new IllegalStateException("unsupported mapping");
+                            validations.add("secondary");
+                            throw new IllegalStateException("unsupported schema");
                         },
-                        () -> executions.add("elasticsearch")));
+                        () -> executions.add("secondary")));
 
         AutoMigrationCoordinator coordinator =
-                new AutoMigrationCoordinator(List.of(elasticsearch, cassandra));
+                new AutoMigrationCoordinator(List.of(secondary, primary));
 
         assertThatThrownBy(coordinator::afterSingletonsInstantiated)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Schema auto-migration validation failed for provider 'elasticsearch'")
-                .hasRootCauseMessage("unsupported mapping");
-        assertThat(validations).containsExactly("cassandra", "elasticsearch");
+                .hasMessage("Schema auto-migration validation failed for provider 'secondary'")
+                .hasRootCauseMessage("unsupported schema");
+        assertThat(validations).containsExactly("primary", "secondary");
         assertThat(executions).isEmpty();
     }
 
@@ -82,31 +82,31 @@ class AutoMigrationCoordinatorTest {
     void executesProvidersConcurrentlyAfterGlobalValidation() {
         CyclicBarrier executionBarrier = new CyclicBarrier(2);
         List<String> executions = new CopyOnWriteArrayList<>();
-        SchemaAutoMigrationProvider cassandra = provider(
-                "cassandra",
+        SchemaAutoMigrationProvider primary = provider(
+                "primary",
                 100,
                 () -> migration(
                         () -> {
                         },
                         () -> {
                             await(executionBarrier);
-                            executions.add("cassandra");
+                            executions.add("primary");
                         }));
-        SchemaAutoMigrationProvider elasticsearch = provider(
-                "elasticsearch",
+        SchemaAutoMigrationProvider secondary = provider(
+                "secondary",
                 200,
                 () -> migration(
                         () -> {
                         },
                         () -> {
                             await(executionBarrier);
-                            executions.add("elasticsearch");
+                            executions.add("secondary");
                         }));
 
-        new AutoMigrationCoordinator(List.of(cassandra, elasticsearch))
+        new AutoMigrationCoordinator(List.of(primary, secondary))
                 .afterSingletonsInstantiated();
 
-        assertThat(executions).containsExactlyInAnyOrder("cassandra", "elasticsearch");
+        assertThat(executions).containsExactlyInAnyOrder("primary", "secondary");
     }
 
     @Test

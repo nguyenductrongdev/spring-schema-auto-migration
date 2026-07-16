@@ -47,8 +47,8 @@ jobs:
       - name: Enable Maven Wrapper
         run: chmod +x mvnw
 
-      - name: Verify against Cassandra, Elasticsearch 8, and Elasticsearch 9
+      - name: Verify against Cassandra
         run: >-
           ./mvnw -B --no-transfer-progress
-          -pl schema-auto-migration-spring-boot-starter,compatibility-tests/elasticsearch-9
+          -pl schema-auto-migration-spring-boot-starter
           -am -Pintegration-tests verify
