@@ -1,6 +1,6 @@
 services:
   cassandra:
-    image: cassandra:5.0.8
+    image: ${CASSANDRA_IMAGE:-cassandra:5.0.8}
     ports:
       - "9042:9042"
     environment:
@@ -15,7 +15,7 @@ services:
       start_period: 30s
 
   cassandra-init:
-    image: cassandra:5.0.8
+    image: ${CASSANDRA_IMAGE:-cassandra:5.0.8}
     depends_on:
       cassandra:
         condition: service_healthy

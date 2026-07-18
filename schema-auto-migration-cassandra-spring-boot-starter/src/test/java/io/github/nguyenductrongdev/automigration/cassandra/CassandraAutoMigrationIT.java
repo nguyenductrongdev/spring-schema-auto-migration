@@ -12,11 +12,15 @@ import io.github.nguyenductrongdev.automigration.cassandra.schema.TableDefinitio
 import io.github.nguyenductrongdev.automigration.cassandra.schema.UdtDefinition;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.UdtFieldDefinition;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.cassandra.CassandraContainer;
+import org.testcontainers.containers.ContainerLaunchException;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.AbstractWaitStrategy;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.net.InetSocketAddress;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,12 +30,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers(disabledWithoutDocker = true)
 class CassandraAutoMigrationIT {
 
+    private static final String LOCAL_DATACENTER = "datacenter1";
+    private static final int CQL_PORT = 9042;
     private static final String KEYSPACE = "migration_it";
 
     @Container
-    static final CassandraContainer CASSANDRA =
-            new CassandraContainer(DockerImageName.parse(
-                    System.getProperty("cassandra.test.image", "cassandra:5.0.8")));
+    static final GenericContainer<?> CASSANDRA =
+            new GenericContainer<>(DockerImageName.parse(
+                    System.getProperty("cassandra.test.image", "cassandra:5.0.8")))
+                    .withExposedPorts(CQL_PORT)
+                    .withEnv("CASSANDRA_SNITCH", "GossipingPropertyFileSnitch")
+                    .withEnv("CASSANDRA_ENDPOINT_SNITCH", "GossipingPropertyFileSnitch")
+                    .withEnv("CASSANDRA_DC", LOCAL_DATACENTER)
+                    .withEnv(
+                            "JVM_OPTS",
+                            "-Dcassandra.skip_wait_for_gossip_to_settle=0 -Dcassandra.initial_token=0")
+                    .withEnv("HEAP_NEWSIZE", "128M")
+                    .withEnv("MAX_HEAP_SIZE", "1024M")
+                    .waitingFor(new CassandraQueryWaitStrategy());
 
     private final CassandraSchemaInspector inspector = new CassandraSchemaInspector();
     private final CassandraSchemaComparator comparator = new CassandraSchemaComparator();
@@ -42,7 +58,7 @@ class CassandraAutoMigrationIT {
         try (CqlSession bootstrap = newSession(null)) {
             bootstrap.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE
                     + " WITH replication = {'class': 'NetworkTopologyStrategy', '"
-                    + CASSANDRA.getLocalDatacenter() + "': 1}");
+                    + LOCAL_DATACENTER + "': 1}");
         }
 
         try (CqlSession session = newSession(KEYSPACE)) {
@@ -78,8 +94,9 @@ class CassandraAutoMigrationIT {
 
     private CqlSession newSession(String keyspace) {
         var builder = CqlSession.builder()
-                .addContactPoint(CASSANDRA.getContactPoint())
-                .withLocalDatacenter(CASSANDRA.getLocalDatacenter());
+                .addContactPoint(new InetSocketAddress(
+                        CASSANDRA.getHost(), CASSANDRA.getMappedPort(CQL_PORT)))
+                .withLocalDatacenter(LOCAL_DATACENTER);
         if (keyspace != null) {
             builder.withKeyspace(keyspace);
         }
@@ -117,5 +134,44 @@ class CassandraAutoMigrationIT {
         return new CassandraSchema(
                 Map.of(customer.name(), customer, customerEvent.name(), customerEvent),
                 Map.of(address.name(), address));
+    }
+
+    private static final class CassandraQueryWaitStrategy extends AbstractWaitStrategy {
+
+        @Override
+        protected void waitUntilReady() {
+            Instant deadline = Instant.now().plus(startupTimeout);
+            RuntimeException lastFailure = null;
+
+            while (Instant.now().isBefore(deadline)) {
+                try (CqlSession session = CqlSession.builder()
+                        .addContactPoint(new InetSocketAddress(
+                                waitStrategyTarget.getHost(),
+                                waitStrategyTarget.getMappedPort(CQL_PORT)))
+                        .withLocalDatacenter(LOCAL_DATACENTER)
+                        .build()) {
+                    session.execute("SELECT release_version FROM system.local");
+                    return;
+                } catch (RuntimeException exception) {
+                    lastFailure = exception;
+                    pauseBeforeRetry();
+                }
+            }
+
+            throw new ContainerLaunchException(
+                    "Timed out waiting for Cassandra to be accessible for query execution",
+                    lastFailure);
+        }
+
+        private void pauseBeforeRetry() {
+            try {
+                Thread.sleep(1_000);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new ContainerLaunchException(
+                        "Interrupted while waiting for Cassandra to become ready",
+                        exception);
+            }
+        }
     }
 }

@@ -13,17 +13,25 @@
     <artifactId>schema-auto-migration-bom</artifactId>
     <packaging>pom</packaging>
     <name>Schema Auto Migration BOM</name>
-    <description>Version alignment for Spring Schema Auto Migration modules</description>
+    <description>Version alignment and security constraints for Spring Schema Auto Migration modules</description>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>io.github.nguyenductrongdev</groupId>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson2.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>${project.groupId}</groupId>
                 <artifactId>schema-auto-migration-spring-boot</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.github.nguyenductrongdev</groupId>
+                <groupId>${project.groupId}</groupId>
                 <artifactId>schema-auto-migration-cassandra-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>

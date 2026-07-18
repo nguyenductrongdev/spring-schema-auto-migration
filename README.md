@@ -37,9 +37,13 @@ See the [CI workflow](.github/workflows/ci.yml) for the tested compatibility mat
 
 ## Installation
 
-Add the JitPack repository and the Cassandra starter to the application POM:
+Add the JitPack repository, import the library BOM, and add the Cassandra starter to the application POM:
 
 ```xml
+<properties>
+    <schema-auto-migration.version>master-SNAPSHOT</schema-auto-migration.version>
+</properties>
+
 <repositories>
     <repository>
         <id>jitpack.io</id>
@@ -47,20 +51,31 @@ Add the JitPack repository and the Cassandra starter to the application POM:
     </repository>
 </repositories>
 
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.github.nguyenductrongdev.spring-schema-auto-migration</groupId>
+            <artifactId>schema-auto-migration-bom</artifactId>
+            <version>${schema-auto-migration.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
     <dependency>
         <groupId>com.github.nguyenductrongdev.spring-schema-auto-migration</groupId>
         <artifactId>schema-auto-migration-cassandra-spring-boot-starter</artifactId>
-        <version>master-SNAPSHOT</version>
     </dependency>
 </dependencies>
 ```
 
 The starter includes `spring-boot-starter-data-cassandra` transitively. Applications do not need to declare it a second time or change their existing Spring Boot parent.
 
-`master-SNAPSHOT` tracks the current development branch and may change between builds. Use a release tag such as `v0.1.0` as the version for reproducible builds after that tag is published. Public JitPack dependencies require no Maven credentials or access token.
+The BOM aligns library modules and constrains Jackson 2 to the patched `2.21.5` baseline for [CVE-2026-54515](https://github.com/advisories/GHSA-5jmj-h7xm-6q6v). It does not replace the application's Spring Boot parent or imported BOM, and it does not change the Jackson 3 line managed by Spring Boot 4.
 
-The optional `schema-auto-migration-bom` uses the same JitPack group and version to align multiple library modules. It is not required for the single starter dependency above.
+`master-SNAPSHOT` tracks the current development branch and may change between builds. Set `schema-auto-migration.version` to a release tag such as `v0.1.0` for reproducible builds after that tag is published. Public JitPack dependencies require no Maven credentials or access token.
 
 ## Quick Start
 
@@ -200,6 +215,8 @@ The selected session must have a configured keyspace and the permissions require
 ## Sample Application
 
 The [cassandra-sample-app](cassandra-sample-app) module contains a mapped table, a UDT, a repository, and a Docker Compose environment using Cassandra 5.
+
+The Compose and Testcontainers images are development and CI infrastructure; they are not included in published artifacts and are not a production deployment baseline. Set `CASSANDRA_IMAGE` for Compose or `-Dcassandra.test.image` for integration tests when your organization requires a compatible approved or hardened image.
 
 From the repository root:
 

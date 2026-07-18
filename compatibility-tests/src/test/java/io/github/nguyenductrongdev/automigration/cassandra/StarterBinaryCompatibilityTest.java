@@ -1,6 +1,8 @@
 package io.github.nguyenductrongdev.automigration.cassandra;
 
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.fasterxml.jackson.core.Version;
+import com.fasterxml.jackson.databind.cfg.PackageVersion;
 import io.github.nguyenductrongdev.automigration.cassandra.scan.SpringDataCassandraSchemaScanner;
 import io.github.nguyenductrongdev.automigration.cassandra.schema.CassandraSchema;
 import org.junit.jupiter.api.Test;
@@ -20,10 +22,17 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.mock;
 
 class StarterBinaryCompatibilityTest {
+    private static final Version MINIMUM_SAFE_JACKSON_DATABIND_VERSION =
+            new Version(2, 21, 5, null, "com.fasterxml.jackson.core", "jackson-databind");
 
     @Test
     void recognizesTheRuntimeSpringBootLine() {
         assertThatCode(SpringBootCompatibility::verifySupported).doesNotThrowAnyException();
+    }
+
+    @Test
+    void usesPatchedJacksonDatabind() {
+        assertThat(PackageVersion.VERSION).isGreaterThanOrEqualTo(MINIMUM_SAFE_JACKSON_DATABIND_VERSION);
     }
 
     @Test

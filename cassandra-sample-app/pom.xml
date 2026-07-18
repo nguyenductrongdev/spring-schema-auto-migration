@@ -16,6 +16,14 @@
     <dependencyManagement>
         <dependencies>
             <dependency>
+                <groupId>io.github.nguyenductrongdev</groupId>
+                <artifactId>schema-auto-migration-bom</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
                 <version>${spring-boot.version}</version>
@@ -29,7 +37,6 @@
         <dependency>
             <groupId>io.github.nguyenductrongdev</groupId>
             <artifactId>schema-auto-migration-cassandra-spring-boot-starter</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
