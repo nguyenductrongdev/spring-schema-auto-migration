@@ -12,6 +12,9 @@ The Cassandra provider is explicitly enabled with `@EnableCassandraAutoMigration
 
 > **Project status:** `0.1.0-SNAPSHOT` is a pre-release build. Public APIs may change before `1.0.0`.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the module boundaries, class diagram, and
+complete startup lifecycle.
+
 ## Features
 
 - Additive-only Cassandra schema changes

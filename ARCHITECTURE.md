@@ -1,13 +1,149 @@
-# Cassandra Spring Boot Starter Architecture
+# Architecture
 
-This document describes the runtime architecture of
-`schema-auto-migration-cassandra-spring-boot-starter`. The starter implements the
-Cassandra-specific provider. Startup coordination lives in the sibling
-`schema-auto-migration-spring-boot` module.
+This document describes the repository-wide runtime architecture. The
+`schema-auto-migration-spring-boot` module owns the provider-independent startup
+lifecycle, while `schema-auto-migration-cassandra-spring-boot-starter` contributes the
+Cassandra implementation. Future database modules join the same lifecycle by
+implementing the core provider contracts.
 
 The starter is explicitly activated. Adding the dependency does not scan mappings or
 execute CQL until an application class is annotated with
 `@EnableCassandraAutoMigration`.
+
+## Architecture at a glance
+
+Read this diagram from the activation annotation down to the Cassandra execution
+components. The classes in the core module are database-independent; everything below
+`CassandraAutoMigrationProvider` belongs to the Cassandra provider.
+
+```mermaid
+classDiagram
+    direction TB
+
+    class EnableCassandraAutoMigration {
+        <<annotation>>
+    }
+
+    class CassandraAutoMigrationConfiguration {
+        <<configuration>>
+    }
+
+    class AutoMigrationCoordinatorConfiguration {
+        <<configuration>>
+    }
+
+    class SmartInitializingSingleton {
+        <<interface>>
+        +afterSingletonsInstantiated()
+    }
+
+    class AutoMigrationCoordinator {
+        -List~SchemaAutoMigrationProvider~ providers
+        +afterSingletonsInstantiated()
+        -migrate(ExecutorService)
+    }
+
+    class SchemaAutoMigrationProvider {
+        <<interface>>
+        +providerName() String
+        +prepareMigration() PreparedSchemaMigration
+        +getOrder() int
+    }
+
+    class PreparedSchemaMigration {
+        <<interface>>
+        +validate()
+        +execute()
+    }
+
+    class CassandraAutoMigrationProvider {
+        +providerName() String
+        +prepareMigration() PreparedSchemaMigration
+        +getOrder() int
+    }
+
+    class PreparedCassandraMigration {
+        -CassandraAutoMigrationMode mode
+        -String keyspace
+        -MigrationPlan plan
+        +validate()
+        +execute()
+    }
+
+    class CassandraAutoMigrationProperties {
+        -CassandraAutoMigrationMode mode
+    }
+
+    class SpringDataCassandraSchemaScanner {
+        +scan() CassandraSchema
+    }
+
+    class CassandraSchemaInspector {
+        +inspect(CqlSession, String) CassandraSchema
+    }
+
+    class CassandraSchemaComparator {
+        +compare(String, CassandraSchema, CassandraSchema) MigrationPlan
+    }
+
+    class CassandraMigrationPlanLogger {
+        +log(String, MigrationPlan)
+    }
+
+    class CassandraMigrationExecutor {
+        +execute(CqlSession, List~String~)
+    }
+
+    class CassandraSchema {
+        <<immutable model>>
+    }
+
+    class MigrationPlan {
+        +supportedCql() List~String~
+        +unsupportedDifferences() List~SchemaDifference~
+    }
+
+    class CqlSession
+
+    EnableCassandraAutoMigration ..> CassandraAutoMigrationConfiguration : imports
+    CassandraAutoMigrationConfiguration ..> AutoMigrationCoordinatorConfiguration : imports
+    CassandraAutoMigrationConfiguration ..> CassandraAutoMigrationProvider : creates
+    CassandraAutoMigrationConfiguration ..> CassandraAutoMigrationProperties : binds
+    AutoMigrationCoordinatorConfiguration ..> AutoMigrationCoordinator : creates
+
+    SmartInitializingSingleton <|.. AutoMigrationCoordinator
+    AutoMigrationCoordinator o-- "0..*" SchemaAutoMigrationProvider : collects all beans
+    SchemaAutoMigrationProvider --> PreparedSchemaMigration : prepares
+    SchemaAutoMigrationProvider <|.. CassandraAutoMigrationProvider
+    PreparedSchemaMigration <|.. PreparedCassandraMigration
+    CassandraAutoMigrationProvider *-- PreparedCassandraMigration : creates
+
+    CassandraAutoMigrationProvider --> CassandraAutoMigrationProperties
+    CassandraAutoMigrationProvider --> SpringDataCassandraSchemaScanner
+    CassandraAutoMigrationProvider --> CassandraSchemaInspector
+    CassandraAutoMigrationProvider --> CassandraSchemaComparator
+    CassandraAutoMigrationProvider --> CqlSession
+    SpringDataCassandraSchemaScanner --> CassandraSchema : desired schema
+    CassandraSchemaInspector --> CassandraSchema : existing schema
+    CassandraSchemaInspector --> CqlSession : reads metadata
+    CassandraSchemaComparator --> CassandraSchema : compares
+    CassandraSchemaComparator --> MigrationPlan : produces
+    PreparedCassandraMigration --> MigrationPlan : validates
+    PreparedCassandraMigration --> CassandraMigrationPlanLogger : dry run
+    PreparedCassandraMigration --> CassandraMigrationExecutor : safe update
+    CassandraMigrationExecutor --> CqlSession : executes CQL
+```
+
+The shortest path through the startup flow is:
+
+1. `@EnableCassandraAutoMigration` imports the Cassandra configuration.
+2. The configuration registers the Cassandra provider and the shared coordinator.
+3. Spring injects every registered `SchemaAutoMigrationProvider` bean into the
+   coordinator, creating those provider beans first as dependencies.
+4. Spring calls `afterSingletonsInstantiated()` after regular singleton creation.
+5. The coordinator prepares providers concurrently, then validates every prepared plan.
+6. Only when global validation succeeds does it execute providers concurrently; each
+   provider preserves the ordering required by its own database operations.
 
 ## Design invariants
 
@@ -58,36 +194,36 @@ flowchart LR
 
     cassandra[("Cassandra keyspace")]
 
-    app --> enable
+    app -->|"declares"| enable
     enable -->|"@Import"| config
     config -->|"@EnableConfigurationProperties"| properties
     config -->|"@Import"| coreConfig
-    coreConfig --> coordinator
+    coreConfig -->|"registers coordinator bean"| coordinator
 
-    mappings --> converter
-    converter --> scanner
-    appSession --> config
+    mappings -->|"registered in mapping context"| converter
+    converter -->|"supplies mapping metadata"| scanner
+    appSession -->|"supplies default session bean"| config
     customSession -.->|"overrides the session used for DDL"| config
 
-    config --> scanner
-    config --> inspector
-    config --> comparator
-    config --> logger
-    config --> executor
-    config --> provider
-    config --> selectedSession
-    selectedSession --> provider
+    config -->|"registers scanner bean"| scanner
+    config -->|"registers inspector bean"| inspector
+    config -->|"registers comparator bean"| comparator
+    config -->|"registers plan logger bean"| logger
+    config -->|"registers executor bean"| executor
+    config -->|"registers provider bean"| provider
+    config -->|"selects migration session"| selectedSession
+    selectedSession -->|"injected into"| provider
 
     provider -.->|"implements"| contract
     coordinator -->|"prepare, validate, execute"| contract
-    provider --> scanner
-    provider --> inspector
-    provider --> comparator
-    provider --> logger
-    provider --> executor
-    inspector --> selectedSession
-    executor --> selectedSession
-    selectedSession --> cassandra
+    provider -->|"scans desired schema"| scanner
+    provider -->|"inspects existing schema"| inspector
+    provider -->|"builds migration plan"| comparator
+    provider -->|"logs DRY_RUN plan"| logger
+    provider -->|"executes SAFE_UPDATE plan"| executor
+    inspector -->|"reads metadata through"| selectedSession
+    executor -->|"executes CQL through"| selectedSession
+    selectedSession -->|"connects to"| cassandra
 ```
 
 `@EnableCassandraAutoMigration` is metadata, not an object that directly calls the
