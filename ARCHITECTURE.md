@@ -282,7 +282,7 @@ sequenceDiagram
     participant Spring as Spring BeanFactory
     participant Coordinator as AutoMigrationCoordinator
     participant Provider as CassandraAutoMigrationProvider
-    participant Properties as CassandraAutoMigrationProperties
+    participant MigrationProperties as CassandraAutoMigrationProperties
     participant Session as CqlSession
     participant Inspector as CassandraSchemaInspector
     participant Scanner as SpringDataCassandraSchemaScanner
@@ -293,8 +293,8 @@ sequenceDiagram
     Coordinator->>Coordinator: migrate(executorService)
     Note over Coordinator,Provider: Each provider preparation is scheduled with CompletableFuture.supplyAsync
     Coordinator->>Provider: prepareMigration()
-    Provider->>Properties: getMode()
-    Properties-->>Provider: NONE, DRY_RUN, or SAFE_UPDATE
+    Provider->>MigrationProperties: getMode()
+    MigrationProperties-->>Provider: NONE, DRY_RUN, or SAFE_UPDATE
 
     alt mode is NONE
         Provider-->>Coordinator: PreparedSchemaMigration.noOp()
